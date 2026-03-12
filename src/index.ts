@@ -1,4 +1,8 @@
 import { Hono } from "hono";
+import { basicAuth } from "hono/basic-auth";
+import { Container, getContainer } from "@cloudflare/containers";
+import { html } from "./shell";
+import type { Env } from "./types";
 import { Container, getContainer } from "@cloudflare/containers";
 import { html } from "./shell";
 import type { Env } from "./types";
@@ -29,6 +33,15 @@ class CloudShellSandbox extends Container {
 }
 
 const app = new Hono<{ Bindings: Env }>();
+
+// Basic auth middleware with env vars fallback to admin:admin
+app.use(
+  "*",
+  basicAuth({
+    username: process.env.AUTH_USERNAME || "admin",
+    password: process.env.AUTH_PASSWORD || "admin",
+  })
+);
 
 function sandboxId(email: string): string {
   return "shell:" + email.toLowerCase().replace(/[^a-z0-9]/g, "-");
