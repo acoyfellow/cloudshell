@@ -15,6 +15,7 @@ const ALLOWED_ORIGINS = [
   "http://localhost:3000",
   "https://cloudshell.workers.dev",
   "https://cloudshell.coy.workers.dev",
+  "https://cloudshell.coey.dev",
   // Add your custom domain here
 ];
 

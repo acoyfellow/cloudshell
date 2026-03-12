@@ -1,81 +1,71 @@
 import { Hono } from "hono";
-import { getSandbox } from "@cloudflare/sandbox";
+import { Container, getContainer } from "@cloudflare/containers";
 import { html } from "./shell";
 import type { Env } from "./types";
-import {
-  validateOrigin,
-  securityHeaders,
-  rateLimit,
-  validateInput,
-  checkSessionTimeout,
-  validateSandboxId,
-  createSession,
-} from "./security";
 
-export { Sandbox } from "@cloudflare/sandbox";
+// Export the Container class for Durable Object binding
+export { CloudShellTerminal, TerminalContainer, ShellContainer, CloudShellSandbox };
 
-const app = new Hono<{ Bindings: Env; Variables: { nonce: string } }>();
+// Current Container class
+class CloudShellTerminal extends Container {
+  defaultPort = 8080;
+  sleepAfter = '5m';
+}
 
-/**
- * Apply security middleware to all routes
- */
-app.use(securityHeaders);
-app.use(rateLimit);
-app.use(validateInput);
-app.use(checkSessionTimeout);
+// Legacy classes for backwards compatibility
+class TerminalContainer extends Container {
+  defaultPort = 8080;
+  sleepAfter = '5m';
+}
 
-/**
- * Derive a stable sandbox ID from the authenticated email.
- * One sandbox per user, always the same instance.
- */
+class ShellContainer extends Container {
+  defaultPort = 8080;
+  sleepAfter = '5m';
+}
+
+class CloudShellSandbox extends Container {
+  defaultPort = 8080;
+  sleepAfter = '5m';
+}
+
+const app = new Hono<{ Bindings: Env }>();
+
 function sandboxId(email: string): string {
   return "shell:" + email.toLowerCase().replace(/[^a-z0-9]/g, "-");
 }
 
-/**
- * Get the CF Access email from the request.
- * Returns null if not behind Access (shouldn't happen in prod).
- */
 function getEmail(c: { req: { header: (name: string) => string | undefined } }): string | null {
   return c.req.header("Cf-Access-Authenticated-User-Email") ?? null;
 }
 
-/** Health check */
 app.get("/health", (c) => c.json({ status: "ok" }));
 
-/** Main page -- serve the terminal UI */
 app.get("/", (c) => {
   const email = getEmail(c) ?? "local@dev";
   const id = sandboxId(email);
-  
-  // Create session for timeout tracking
-  const sessionId = createSession(email, id);
-  
-  // Get nonce from context (set by securityHeaders middleware)
-  const nonce = c.get("nonce");
-  
-  return c.html(html(email, id, sessionId, nonce));
+  return c.html(html(email, id));
 });
 
-/** Terminal WebSocket endpoint with CSWSH protection */
-app.get("/ws/terminal", validateOrigin, async (c) => {
+app.get("/ws/terminal", async (c) => {
   const upgrade = c.req.header("Upgrade");
   if (upgrade?.toLowerCase() !== "websocket") {
     return c.text("expected websocket", 426);
   }
 
   const email = getEmail(c) ?? "local@dev";
-  const id = c.req.query("id");
+  const id = c.req.query("id") ?? sandboxId(email);
   
-  // Validate sandbox ID
-  if (id && !validateSandboxId(id)) {
-    return c.text("Invalid sandbox ID", 400);
+  // Get the container
+  const container = getContainer(c.env.Sandbox, id);
+  
+  // Start if not running
+  const state = await container.getState();
+  if (state.status !== 'healthy') {
+    await container.start();
   }
   
-  const sandboxIdToUse = id ?? sandboxId(email);
-  const sandbox = getSandbox(c.env.Sandbox, sandboxIdToUse);
-
-  return sandbox.fetch(c.req.raw);
+  // Proxy WebSocket to container
+  return container.fetch(c.req.raw);
 });
 
 export default app;

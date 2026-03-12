@@ -1,28 +1,29 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-"name": "cloudshell",
+  "name": "cloudshell",
   "account_id": "bfcb6ac5b3ceaf42a09607f6f7925823",
   "main": "src/index.ts",
   "compatibility_date": "2025-10-13",
   "compatibility_flags": ["nodejs_compat"],
-  "containers": {
-    "Sandbox": {
-      "image": "./Dockerfile",
-      "max_instances": 5
+  "containers": [
+    {
+      "max_instances": 5,
+      "class_name": "CloudShellTerminal",
+      "image": "./Dockerfile"
     }
-  },
+  ],
   "durable_objects": {
     "bindings": [
       {
-        "class_name": "Sandbox",
-        "name": "Sandbox"
+        "name": "Sandbox",
+        "class_name": "CloudShellTerminal"
       }
     ]
   },
   "migrations": [
     {
-      "new_sqlite_classes": ["Sandbox"],
-      "tag": "v1"
+      "tag": "v6",
+      "new_sqlite_classes": ["CloudShellTerminal"]
     }
   ],
   "observability": {
