@@ -1,0 +1,26 @@
+=== Wave 3 Security Implementation Evidence ===
+
+=== Security Features Implemented ===
+
+Task 7: CSWSH Protection (Origin Validation)
+- validateOrigin middleware in src/security.ts
+- Returns 403 for invalid origins
+
+Task 8: CSP Headers Implementation
+- securityHeaders middleware in src/security.ts
+- Nonce-based CSP with strict-dynamic
+
+Task 9: Rate Limiting Implementation
+- rateLimit middleware in src/security.ts
+- 10 req/min WebSocket, 30 req/min HTTP
+
+Task 10: Input Validation Implementation
+- validateInput middleware in src/security.ts
+- validateSandboxId, validateEmail, sanitizeTerminalInput
+
+Task 11: Session Timeouts Implementation
+- checkSessionTimeout middleware in src/security.ts
+- 30-minute idle timeout with client warnings
+
+=== TypeScript Check: PASS ===
+=== Lint Check: PASS ===
