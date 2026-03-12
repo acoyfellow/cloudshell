@@ -17,6 +17,7 @@ export default [
         DurableObjectNamespace: 'readonly',
         DurableObjectStub: 'readonly',
         crypto: 'readonly',
+        fetch: 'readonly',
       },
     },
     plugins: {

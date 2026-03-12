@@ -10,7 +10,7 @@ export function html(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>cloudshell</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.css" nonce="${nonce}" />
+  <link rel="stylesheet" href="https://unpkg.com/xterm@5.3.0/css/xterm.css" />
   <style nonce="${nonce}">
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: 100%; background: #0a0a0a; overflow: hidden; }
@@ -53,7 +53,9 @@ export function html(
     Warning: Session will timeout in 5 minutes due to inactivity
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.js" nonce="${nonce}"></script>
+  <script src="https://unpkg.com/xterm@5.3.0/lib/xterm.js"></script>
+  <script src="https://unpkg.com/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+  <script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/addons/xterm-addon-fit/xterm-addon-fit.min.js" nonce="${nonce}"></script>
   <script nonce="${nonce}">
     const SANDBOX_ID = ${JSON.stringify(sandboxId)};

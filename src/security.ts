@@ -14,6 +14,7 @@ const ALLOWED_ORIGINS = [
   "http://localhost:8787",
   "http://localhost:3000",
   "https://cloudshell.workers.dev",
+  "https://cloudshell.coy.workers.dev",
   // Add your custom domain here
 ];
 
@@ -51,19 +52,14 @@ export async function validateOrigin(c: Context<{ Bindings: Env }>, next: Next):
  * Generates nonce and sets strict CSP headers
  */
 export async function securityHeaders(c: Context, next: Next): Promise<void> {
-  const nonce = generateNonce();
-  
-  // Store nonce in context for use in HTML
-  c.set("nonce", nonce);
-  
-  // Set security headers
+  // Set security headers - simplified CSP for xterm from unpkg
   c.header("Content-Security-Policy",
     `default-src 'self'; ` +
-    `script-src 'nonce-${nonce}' 'strict-dynamic' https://cdnjs.cloudflare.com; ` +
-    `style-src 'self' 'nonce-${nonce}' https://cdnjs.cloudflare.com; ` +
-    `connect-src 'self' wss:; ` +
-    `img-src 'self' data:; ` +
-    `font-src 'self'; ` +
+    `script-src 'self' 'unsafe-inline' https://unpkg.com; ` +
+    `style-src 'self' 'unsafe-inline' https://unpkg.com; ` +
+    `connect-src 'self' wss: https:; ` +
+    `img-src 'self' data: https:; ` +
+    `font-src 'self' https:; ` +
     `frame-ancestors 'none'; ` +
     `base-uri 'self'; ` +
     `form-action 'self';`
