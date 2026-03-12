@@ -1,17 +1,16 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "cloudshell",
+"name": "cloudshell",
+  "account_id": "bfcb6ac5b3ceaf42a09607f6f7925823",
   "main": "src/index.ts",
   "compatibility_date": "2025-10-13",
   "compatibility_flags": ["nodejs_compat"],
-  "containers": [
-    {
-      "class_name": "Sandbox",
+  "containers": {
+    "Sandbox": {
       "image": "./Dockerfile",
-      "instance_type": "standard-1",
       "max_instances": 5
     }
-  ],
+  },
   "durable_objects": {
     "bindings": [
       {
