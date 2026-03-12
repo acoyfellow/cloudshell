@@ -9,7 +9,13 @@
     {
       "max_instances": 5,
       "class_name": "CloudShellTerminal",
-      "image": "./Dockerfile"
+      "image": "./Dockerfile",
+      "volumes": [
+        {
+          "name": "shell-data",
+          "mount_path": "/home/user"
+        }
+      ]
     }
   ],
   "durable_objects": {

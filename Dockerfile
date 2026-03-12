@@ -260,7 +260,15 @@ RUN go mod tidy && go build -o /server
 # Runtime image
 FROM alpine:latest
 RUN apk add --no-cache bash
+
+# Create user for persistent home directory
+RUN adduser -D -s /bin/bash user
+
 COPY --from=build /server /server
 EXPOSE 8080
+
+# Start bash in user's home by default
+WORKDIR /home/user
+ENV HOME=/home/user
 
 CMD ["/server"]
