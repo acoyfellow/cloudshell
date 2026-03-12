@@ -1,12 +1,17 @@
-export function html(email: string, sandboxId: string): string {
+export function html(
+  email: string,
+  sandboxId: string,
+  sessionId: string,
+  nonce: string
+): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>cloudshell</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.css" />
-  <style>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.css" nonce="${nonce}" />
+  <style nonce="${nonce}">
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: 100%; background: #0a0a0a; overflow: hidden; }
     #bar {
@@ -23,6 +28,19 @@ export function html(email: string, sandboxId: string): string {
     #bar .status.disconnected { color: #a44; }
     #terminal { height: calc(100% - 28px); }
     .xterm { height: 100%; padding: 4px; }
+    #timeout-warning {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #aa4;
+      color: #000;
+      padding: 20px;
+      border-radius: 4px;
+      font-family: monospace;
+      display: none;
+      z-index: 1000;
+    }
   </style>
 </head>
 <body>
@@ -31,12 +49,20 @@ export function html(email: string, sandboxId: string): string {
     <span id="status" class="status disconnected">disconnected</span>
   </div>
   <div id="terminal"></div>
+  <div id="timeout-warning">
+    Warning: Session will timeout in 5 minutes due to inactivity
+  </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/addons/xterm-addon-fit/xterm-addon-fit.min.js"></script>
-  <script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.js" nonce="${nonce}"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/addons/xterm-addon-fit/xterm-addon-fit.min.js" nonce="${nonce}"></script>
+  <script nonce="${nonce}">
     const SANDBOX_ID = ${JSON.stringify(sandboxId)};
+    const SESSION_ID = ${JSON.stringify(sessionId)};
+    const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+    const WARNING_TIME = 5 * 60 * 1000; // 5 minutes before timeout
     const statusEl = document.getElementById("status");
+    const timeoutWarning = document.getElementById("timeout-warning");
+    let lastActivity = Date.now();
 
     function setStatus(s) {
       statusEl.textContent = s;
@@ -64,13 +90,32 @@ export function html(email: string, sandboxId: string): string {
     let ready = false;
     let reconnectTimer = null;
     let reconnectDelay = 500;
+    let activityTimer = null;
+
+    // Track user activity
+    function updateActivity() {
+      lastActivity = Date.now();
+      timeoutWarning.style.display = "none";
+    }
+
+    // Check for timeout warning
+    function checkTimeout() {
+      const inactive = Date.now() - lastActivity;
+      if (inactive > IDLE_TIMEOUT - WARNING_TIME && inactive < IDLE_TIMEOUT) {
+        timeoutWarning.style.display = "block";
+      } else if (inactive >= IDLE_TIMEOUT) {
+        term.writeln("\\r\\n[Session timed out due to inactivity]");
+        ws.close();
+        return;
+      }
+    }
 
     function connect() {
       if (ws && ws.readyState <= 1) return;
       setStatus("connecting");
 
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
-      const url = proto + "//" + location.host + "/ws/terminal?id=" + encodeURIComponent(SANDBOX_ID);
+      const url = proto + "//" + location.host + "/ws/terminal?id=" + encodeURIComponent(SANDBOX_ID) + "&session=" + encodeURIComponent(SESSION_ID);
 
       ws = new WebSocket(url);
       ws.binaryType = "arraybuffer";
@@ -79,9 +124,12 @@ export function html(email: string, sandboxId: string): string {
         reconnectDelay = 500;
         // send initial size
         ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+        // Start activity tracking
+        activityTimer = setInterval(checkTimeout, 60000); // Check every minute
       };
 
       ws.onmessage = (ev) => {
+        updateActivity();
         if (typeof ev.data === "string") {
           try {
             const msg = JSON.parse(ev.data);
@@ -104,6 +152,10 @@ export function html(email: string, sandboxId: string): string {
       ws.onclose = () => {
         ready = false;
         setStatus("disconnected");
+        if (activityTimer) {
+          clearInterval(activityTimer);
+          activityTimer = null;
+        }
         scheduleReconnect();
       };
 
@@ -123,6 +175,7 @@ export function html(email: string, sandboxId: string): string {
 
     // keystrokes -> binary
     term.onData((data) => {
+      updateActivity();
       if (ws && ws.readyState === 1 && ready) {
         ws.send(new TextEncoder().encode(data));
       }
