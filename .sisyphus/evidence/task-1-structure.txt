@@ -1,0 +1,38 @@
+=== Wave 1 Foundation Evidence ===
+
+=== Root Directory Structure ===
+total 80
+drwx------@ 15 jordan  staff   480 Mar 11 21:07 .
+drwx------@ 93 jordan  staff  2976 Mar 11 17:20 ..
+-rw-r--r--@  1 jordan  staff    52 Mar 11 21:07 .eslintignore
+-rw-r--r--@  1 jordan  staff   685 Mar 11 21:07 .eslintrc.cjs
+drwxr-xr-x@ 12 jordan  staff   384 Mar 11 21:24 .git
+-rw-r--r--@  1 jordan  staff    73 Mar 11 21:06 .gitignore
+-rw-r--r--@  1 jordan  staff    41 Mar 11 21:07 .prettierignore
+-rw-r--r--@  1 jordan  staff   106 Mar 11 21:07 .prettierrc
+drwxr-xr-x@  7 jordan  staff   224 Mar 11 21:02 .sisyphus
+-rw-------   1 jordan  staff   427 Mar 11 15:50 Dockerfile
+-rw-------@  1 jordan  staff  1500 Mar 11 21:09 package.json
+-rw-------   1 jordan  staff  2424 Mar 11 15:50 README.md
+drwxr-xr-x@  5 jordan  staff   160 Mar 11 21:04 src
+-rw-r--r--@  1 jordan  staff   549 Mar 11 21:06 tsconfig.json
+-rw-------   1 jordan  staff   618 Mar 11 15:50 wrangler.jsonc
+
+=== Source Directory ===
+total 32
+drwxr-xr-x@  5 jordan  staff   160 Mar 11 21:04 .
+drwx------@ 15 jordan  staff   480 Mar 11 21:07 ..
+-rw-------@  1 jordan  staff  1434 Mar 11 15:50 index.ts
+-rw-------@  1 jordan  staff  4305 Mar 11 15:50 shell.ts
+-rw-------@  1 jordan  staff   122 Mar 11 15:50 types.ts
+
+=== Git Status ===
+On branch main
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	.sisyphus/evidence/
+
+nothing added to commit but untracked files present (use "git add" to track)
+
+=== Git Log ===
+51ed858 chore(init): Initialize git repo and project structure

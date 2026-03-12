@@ -44,7 +44,7 @@ app.get("/ws/terminal", async (c) => {
   const id = c.req.query("id") ?? sandboxId(email);
   const sandbox = getSandbox(c.env.Sandbox, id);
 
-  return sandbox.terminal(c.req.raw);
+  return sandbox.fetch(c.req.raw);
 });
 
 export default app;
