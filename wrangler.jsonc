@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "cloudshell",
-  "account_id": "YOUR_ACCOUNT_ID",  // Get from https://dash.cloudflare.com
+  // account_id: Set via CLOUDFLARE_ACCOUNT_ID env var or remove to use default
   "main": "src/index.ts",
   "compatibility_date": "2025-10-13",
   "compatibility_flags": ["nodejs_compat"],
@@ -13,26 +13,26 @@
       "volumes": [
         {
           "name": "shell-data",
-          "mount_path": "/home/user"
-        }
-      ]
-    }
+          "mount_path": "/home/user",
+        },
+      ],
+    },
   ],
   "durable_objects": {
     "bindings": [
       {
         "name": "Sandbox",
-        "class_name": "CloudShellTerminal"
-      }
-    ]
+        "class_name": "CloudShellTerminal",
+      },
+    ],
   },
   "migrations": [
     {
       "tag": "v6",
-      "new_sqlite_classes": ["CloudShellTerminal"]
-    }
+      "new_sqlite_classes": ["CloudShellTerminal"],
+    },
   ],
   "observability": {
-    "enabled": true
-  }
+    "enabled": true,
+  },
 }
