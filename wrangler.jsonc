@@ -19,7 +19,7 @@
   "kv_namespaces": [
     {
       "binding": "USERS_KV",
-      "id": "cloudshell-users-kv",
+      "id": "7f68572581e14065b12070267338044b",
     },
   ],
   "durable_objects": {
