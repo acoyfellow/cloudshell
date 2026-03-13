@@ -1,7 +1,14 @@
 import { Hono } from 'hono';
 import { Container, getContainer } from '@cloudflare/containers';
 import { html, loginHtml } from './shell';
-import { generateJWT, verifyJWT, hashPassword, verifyPassword, extractBearerToken } from './auth';
+import {
+  generateJWT,
+  verifyJWT,
+  hashPassword,
+  verifyPassword,
+  extractBearerToken,
+  getUserContainerId,
+} from './auth';
 import type { Env } from './types';
 
 // Export the Container class for Durable Object binding
@@ -125,11 +132,6 @@ app.use('/api/*', async (c, next) => {
   await next();
 });
 
-// Get user-specific container ID
-function getUserContainerId(username: string): string {
-  return `shell:${username.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-}
-
 // WebSocket terminal with JWT auth
 app.get('/ws/terminal', async (c) => {
   const upgrade = c.req.header('Upgrade');
@@ -180,6 +182,55 @@ app.get('/', async (c) => {
   }
 
   return c.html(html(payload.sub));
+});
+
+app.get('/api/ports', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  const token = extractBearerToken(authHeader);
+
+  if (!token) {
+    return c.json({ error: 'Authentication required' }, 401);
+  }
+
+  const payload = await verifyJWT(token);
+  if (!payload) {
+    return c.json({ error: 'Invalid or expired token' }, 401);
+  }
+
+  return c.json({ forwards: [] });
+});
+
+app.post('/api/ports/forward', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  const token = extractBearerToken(authHeader);
+
+  if (!token) {
+    return c.json({ error: 'Authentication required' }, 401);
+  }
+
+  const payload = await verifyJWT(token);
+  if (!payload) {
+    return c.json({ error: 'Invalid or expired token' }, 401);
+  }
+
+  const body = await c.req.json<{ port: number }>();
+  const { port } = body;
+
+  if (!port || port < 1024 || port > 65535) {
+    return c.json({ error: 'Invalid port number (must be 1024-65535)' }, 400);
+  }
+
+  const username = payload.sub;
+  const containerId = getUserContainerId(username);
+  const subdomain = `${port}-${containerId}`.replace(/:/g, '-');
+  const url = `https://${subdomain}.cloudshell.coy.workers.dev`;
+
+  return c.json({
+    message: 'Port forward created (experimental)',
+    port,
+    url,
+    subdomain,
+  });
 });
 
 export default app;

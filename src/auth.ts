@@ -96,6 +96,13 @@ export async function verifyJWT(token: string): Promise<JWTPayload | null> {
 }
 
 /**
+ * Get user-specific container ID
+ */
+export function getUserContainerId(username: string): string {
+  return `shell:${username.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+}
+
+/**
  * Extract Bearer token from Authorization header
  */
 export function extractBearerToken(authHeader: string | undefined): string | null {
