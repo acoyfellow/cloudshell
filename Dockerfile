@@ -259,7 +259,27 @@ RUN go mod tidy && go build -o /server
 
 # Runtime image
 FROM alpine:latest
-RUN apk add --no-cache bash
+
+# Install dev tools
+RUN apk add --no-cache \
+    bash \
+    curl \
+    wget \
+    git \
+    vim \
+    nano \
+    htop \
+    tree \
+    jq \
+    nodejs \
+    npm \
+    python3 \
+    py3-pip \
+    make \
+    gcc \
+    g++ \
+    libc-dev \
+    linux-headers
 
 # Create user for persistent home directory
 RUN adduser -D -s /bin/bash user
