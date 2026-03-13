@@ -233,4 +233,38 @@ app.post('/api/ports/forward', async (c) => {
   });
 });
 
+app.post('/api/container/custom', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  const token = extractBearerToken(authHeader);
+
+  if (!token) {
+    return c.json({ error: 'Authentication required' }, 401);
+  }
+
+  const payload = await verifyJWT(token);
+  if (!payload) {
+    return c.json({ error: 'Invalid or expired token' }, 401);
+  }
+
+  const body = await c.req.json<{ dockerfile?: string }>();
+
+  if (!body.dockerfile) {
+    return c.json({ error: 'Dockerfile content required' }, 400);
+  }
+
+  const username = payload.sub;
+
+  await c.env.USERS_KV.put(`dockerfile:${username}`, body.dockerfile);
+
+  return c.json({
+    message: 'Custom Dockerfile saved',
+    note: 'To apply changes, rebuild and redeploy the container',
+    nextSteps: [
+      '1. Clone the repository',
+      '2. Replace Dockerfile with your custom content',
+      '3. Run: wrangler deploy',
+    ],
+  });
+});
+
 export default app;
