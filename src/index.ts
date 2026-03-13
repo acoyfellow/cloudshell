@@ -3,9 +3,6 @@ import { basicAuth } from "hono/basic-auth";
 import { Container, getContainer } from "@cloudflare/containers";
 import { html } from "./shell";
 import type { Env } from "./types";
-import { Container, getContainer } from "@cloudflare/containers";
-import { html } from "./shell";
-import type { Env } from "./types";
 
 // Export the Container class for Durable Object binding
 export { CloudShellTerminal, TerminalContainer, ShellContainer, CloudShellSandbox };
