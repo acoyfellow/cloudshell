@@ -437,4 +437,4 @@ MIT
 
 ---
 
-Built with love using [Cloudflare Workers](https://workers.cloudflare.com/) and [Containers](https://developers.cloudflare.com/containers/).
+Built for fun using [Cloudflare Workers](https://workers.cloudflare.com/) and [Containers](https://developers.cloudflare.com/containers/).
