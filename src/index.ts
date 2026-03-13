@@ -125,6 +125,11 @@ app.use('/api/*', async (c, next) => {
   await next();
 });
 
+// Get user-specific container ID
+function getUserContainerId(username: string): string {
+  return `shell:${username.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+}
+
 // WebSocket terminal with JWT auth
 app.get('/ws/terminal', async (c) => {
   const upgrade = c.req.header('Upgrade');
@@ -145,9 +150,9 @@ app.get('/ws/terminal', async (c) => {
   }
 
   const username = payload.sub;
-  const id = `shell:${username}`;
+  const id = getUserContainerId(username);
 
-  // Get the container
+  // Get the container - each user gets isolated instance
   const container = getContainer(c.env.Sandbox, id);
 
   // Start if not running
