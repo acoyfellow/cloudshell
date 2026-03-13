@@ -73,11 +73,10 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	log.Println("WebSocket connection established")
 
-	// Start bash with PTY
-	cmd := exec.Command("/bin/bash")
+	// Start tmux session (creates new or attaches to existing)
+	cmd := exec.Command("tmux", "new-session", "-A", "-s", "cloudshell")
 	cmd.Env = append(os.Environ(),
 		"TERM=xterm-256color",
-		"PS1=\\w\\$ ",
 	)
 
 	ptmx, err := pty.Start(cmd)
@@ -279,10 +278,14 @@ RUN apk add --no-cache \
     gcc \
     g++ \
     libc-dev \
-    linux-headers
+    linux-headers \
+    tmux
 
 # Create user for persistent home directory
 RUN adduser -D -s /bin/bash user
+
+COPY .tmux.conf /home/user/.tmux.conf
+RUN chown user:user /home/user/.tmux.conf
 
 COPY --from=build /server /server
 EXPOSE 8080
