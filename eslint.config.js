@@ -18,7 +18,9 @@ export default [
         DurableObjectStub: 'readonly',
         crypto: 'readonly',
         fetch: 'readonly',
-      },
+        Buffer: 'readonly',
+        atob: 'readonly',
+        btoa: 'readonly',
     },
     plugins: {
       '@typescript-eslint': tsPlugin,

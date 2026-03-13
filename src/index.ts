@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { basicAuth } from "hono/basic-auth";
 import { Container, getContainer } from "@cloudflare/containers";
 import { html } from "./shell";
 import type { Env } from "./types";
@@ -31,14 +30,40 @@ class CloudShellSandbox extends Container {
 
 const app = new Hono<{ Bindings: Env }>();
 
-// Basic auth middleware with env vars fallback to admin:admin
-app.use(
-  "*",
-  basicAuth({
-    username: process.env.AUTH_USERNAME || "admin",
-    password: process.env.AUTH_PASSWORD || "admin",
-  })
-);
+// Basic auth middleware - credentials required (set via wrangler secrets)
+app.use("*", async (c, next) => {
+  const validUser = c.env.AUTH_USERNAME;
+  const validPass = c.env.AUTH_PASSWORD;
+
+  if (!validUser || !validPass) {
+    return new Response("Server misconfigured: Set AUTH_USERNAME and AUTH_PASSWORD secrets", { status: 500 });
+  }
+
+  const auth = c.req.header("Authorization");
+  if (!auth) {
+    return new Response("Unauthorized", {
+      status: 401,
+      headers: { "WWW-Authenticate": 'Basic realm="CloudShell"' },
+    });
+  }
+
+  const [scheme, encoded] = auth.split(" ");
+  if (scheme !== "Basic" || !encoded) {
+    return new Response("Bad Request", { status: 400 });
+  }
+
+  const decoded = Buffer.from(encoded, "base64").toString("utf-8");
+  const [username, password] = decoded.split(":");
+
+  if (username !== validUser || password !== validPass) {
+    return new Response("Unauthorized", {
+      status: 401,
+      headers: { "WWW-Authenticate": 'Basic realm="CloudShell"' },
+    });
+  }
+
+  await next();
+});
 
 function sandboxId(email: string): string {
   return "shell:" + email.toLowerCase().replace(/[^a-z0-9]/g, "-");

@@ -2,7 +2,7 @@
 
 > Your personal terminal in the cloud. Deploy in seconds, access anywhere.
 
-**Live demo**: https://cloudshell.coy.workers.dev/ (user: `admin`, pass: `admin`)
+**[Live Demo](https://cloudshell.coy.workers.dev/)**
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/acoyfellow/cloudshell)
 
@@ -31,7 +31,7 @@ npx wrangler login
 npm run deploy
 ```
 
-Visit your worker URL. Login with `admin`/`admin`. You have a terminal!
+Visit your worker URL and log in with your credentials. You have a terminal!
 
 ### What Happens When You Deploy
 
@@ -77,8 +77,8 @@ Opens at `http://localhost:8787`. Uses local container simulation.
 
 | Variable        | Required | Default | Description              |
 | --------------- | -------- | ------- | ------------------------ |
-| `AUTH_USERNAME` | No       | `admin` | HTTP Basic Auth username |
-| `AUTH_PASSWORD` | No       | `admin` | HTTP Basic Auth password |
+| `AUTH_USERNAME` | Yes      | -       | HTTP Basic Auth username |
+| `AUTH_PASSWORD` | Yes      | -       | HTTP Basic Auth password |
 
 ### Project Structure
 
