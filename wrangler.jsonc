@@ -1,6 +1,5 @@
 {
   "name": "cloudshell",
-  // account_id: Set via CLOUDFLARE_ACCOUNT_ID env var or remove to use default
   "main": "src/index.ts",
   "compatibility_date": "2025-10-13",
   "compatibility_flags": ["nodejs_compat"],
@@ -15,6 +14,12 @@
           "mount_path": "/home/user",
         },
       ],
+    },
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "USERS_KV",
+      "id": "cloudshell-users-kv",
     },
   ],
   "durable_objects": {

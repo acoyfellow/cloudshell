@@ -1,4 +1,4 @@
-export function html(email: string, sandboxId: string): string {
+export function html(username: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -27,7 +27,7 @@ export function html(email: string, sandboxId: string): string {
 </head>
 <body>
   <div id="bar">
-    <span class="user">${email} &mdash; ${sandboxId}</span>
+    <span class="user">${username}</span>
     <span id="status" class="status disconnected">disconnected</span>
   </div>
   <div id="terminal"></div>
@@ -35,7 +35,7 @@ export function html(email: string, sandboxId: string): string {
   <script src="https://unpkg.com/xterm@5.3.0/lib/xterm.js"></script>
   <script src="https://unpkg.com/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
   <script>
-    const SANDBOX_ID = ${JSON.stringify(sandboxId)};
+    const USERNAME = ${JSON.stringify(username)};
     const statusEl = document.getElementById("status");
 
     function setStatus(s) {
@@ -69,8 +69,14 @@ export function html(email: string, sandboxId: string): string {
       if (ws && ws.readyState <= 1) return;
       setStatus("connecting");
 
+      const token = localStorage.getItem('cloudshell_token');
+      if (!token) {
+        window.location.href = '/login';
+        return;
+      }
+
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
-      const url = proto + "//" + location.host + "/ws/terminal?id=" + encodeURIComponent(SANDBOX_ID);
+      const url = proto + "//" + location.host + "/ws/terminal?token=" + encodeURIComponent(token);
 
       ws = new WebSocket(url);
       ws.binaryType = "arraybuffer";
@@ -129,6 +135,135 @@ export function html(email: string, sandboxId: string): string {
 
     window.addEventListener("resize", () => fit.fit());
     connect();
+  </script>
+</body>
+</html>`;
+}
+
+export function loginHtml(): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CloudShell - Login</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      height: 100%; 
+      background: #0a0a0a; 
+      font-family: monospace;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .login-box {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      padding: 40px;
+      border-radius: 4px;
+      width: 320px;
+    }
+    h1 {
+      color: #ccc;
+      font-size: 18px;
+      margin-bottom: 24px;
+      text-align: center;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      color: #888;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    input {
+      width: 100%;
+      padding: 8px 12px;
+      background: #0a0a0a;
+      border: 1px solid #333;
+      color: #ccc;
+      font-family: monospace;
+      font-size: 14px;
+    }
+    input:focus {
+      outline: none;
+      border-color: #555;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      background: #2a2a2a;
+      border: 1px solid #333;
+      color: #ccc;
+      font-family: monospace;
+      font-size: 14px;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    button:hover {
+      background: #333;
+    }
+    .error {
+      color: #a44;
+      font-size: 12px;
+      margin-top: 12px;
+      text-align: center;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-box">
+    <h1>CloudShell Login</h1>
+    <form id="loginForm">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" required autofocus />
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required />
+      </div>
+      <button type="submit">Login</button>
+      <div id="error" class="error"></div>
+    </form>
+  </div>
+
+  <script>
+    const form = document.getElementById('loginForm');
+    const errorDiv = document.getElementById('error');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorDiv.style.display = 'none';
+
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          localStorage.setItem('cloudshell_token', data.token);
+          window.location.href = '/';
+        } else {
+          errorDiv.textContent = data.error || 'Login failed';
+          errorDiv.style.display = 'block';
+        }
+      } catch (err) {
+        errorDiv.textContent = 'Network error';
+        errorDiv.style.display = 'block';
+      }
+    });
   </script>
 </body>
 </html>`;

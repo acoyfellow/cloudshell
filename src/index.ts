@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { Container, getContainer } from '@cloudflare/containers';
-import { html } from './shell';
+import { html, loginHtml } from './shell';
+import { generateJWT, verifyJWT, hashPassword, verifyPassword, extractBearerToken } from './auth';
 import type { Env } from './types';
 
 // Export the Container class for Durable Object binding
@@ -33,65 +34,118 @@ const app = new Hono<{ Bindings: Env }>();
 // Health check - must be before auth middleware
 app.get('/health', (c) => c.json({ status: 'ok' }));
 
-// Basic auth middleware - credentials required (set via wrangler secrets)
-app.use('*', async (c, next) => {
-  const validUser = c.env.AUTH_USERNAME;
-  const validPass = c.env.AUTH_PASSWORD;
+// Public routes
+app.get('/login', (c) => c.html(loginHtml()));
 
-  if (!validUser || !validPass) {
-    return new Response('Server misconfigured: Set AUTH_USERNAME and AUTH_PASSWORD secrets', {
-      status: 500,
-    });
+// Login endpoint
+app.post('/api/auth/login', async (c) => {
+  try {
+    const body = await c.req.json<{ username: string; password: string }>();
+    const { username, password } = body;
+
+    if (!username || !password) {
+      return c.json({ error: 'Username and password required' }, 400);
+    }
+
+    // Get user from KV
+    const userData = await c.env.USERS_KV.get(`user:${username}`);
+
+    if (!userData) {
+      return c.json({ error: 'Invalid credentials' }, 401);
+    }
+
+    const user = JSON.parse(userData) as { passwordHash: string; createdAt: number };
+    const isValid = await verifyPassword(password, user.passwordHash);
+
+    if (!isValid) {
+      return c.json({ error: 'Invalid credentials' }, 401);
+    }
+
+    // Generate JWT
+    const { token, expires } = await generateJWT(username);
+
+    return c.json({ token, expires });
+  } catch {
+    return c.json({ error: 'Invalid request' }, 400);
+  }
+});
+
+// Registration endpoint (create default admin on first request)
+app.post('/api/auth/register', async (c) => {
+  try {
+    const body = await c.req.json<{ username: string; password: string }>();
+    const { username, password } = body;
+
+    if (!username || !password) {
+      return c.json({ error: 'Username and password required' }, 400);
+    }
+
+    // Check if user already exists
+    const existing = await c.env.USERS_KV.get(`user:${username}`);
+    if (existing) {
+      return c.json({ error: 'User already exists' }, 409);
+    }
+
+    // Hash password and store
+    const passwordHash = await hashPassword(password);
+    const user = {
+      username,
+      passwordHash,
+      createdAt: Date.now(),
+    };
+
+    await c.env.USERS_KV.put(`user:${username}`, JSON.stringify(user));
+
+    return c.json({ message: 'User created successfully' }, 201);
+  } catch {
+    return c.json({ error: 'Invalid request' }, 400);
+  }
+});
+
+// JWT Auth middleware
+app.use('/api/*', async (c, next) => {
+  // Skip auth for login endpoints
+  if (c.req.path === '/api/auth/login' || c.req.path === '/api/auth/register') {
+    await next();
+    return;
   }
 
-  const auth = c.req.header('Authorization');
-  if (!auth) {
-    return new Response('Unauthorized', {
-      status: 401,
-      headers: { 'WWW-Authenticate': 'Basic realm="CloudShell"' },
-    });
+  const authHeader = c.req.header('Authorization');
+  const token = extractBearerToken(authHeader);
+
+  if (!token) {
+    return c.json({ error: 'Authentication required' }, 401);
   }
 
-  const [scheme, encoded] = auth.split(' ');
-  if (scheme !== 'Basic' || !encoded) {
-    return new Response('Bad Request', { status: 400 });
-  }
-
-  const decoded = Buffer.from(encoded, 'base64').toString('utf-8');
-  const [username, password] = decoded.split(':');
-
-  if (username !== validUser || password !== validPass) {
-    return new Response('Unauthorized', {
-      status: 401,
-      headers: { 'WWW-Authenticate': 'Basic realm="CloudShell"' },
-    });
+  const payload = await verifyJWT(token);
+  if (!payload) {
+    return c.json({ error: 'Invalid or expired token' }, 401);
   }
 
   await next();
 });
 
-function sandboxId(email: string): string {
-  return 'shell:' + email.toLowerCase().replace(/[^a-z0-9]/g, '-');
-}
-
-function getEmail(c: { req: { header: (name: string) => string | undefined } }): string | null {
-  return c.req.header('Cf-Access-Authenticated-User-Email') ?? null;
-}
-
-app.get('/', (c) => {
-  const email = getEmail(c) ?? 'local@dev';
-  const id = sandboxId(email);
-  return c.html(html(email, id));
-});
-
+// WebSocket terminal with JWT auth
 app.get('/ws/terminal', async (c) => {
   const upgrade = c.req.header('Upgrade');
   if (upgrade?.toLowerCase() !== 'websocket') {
     return c.text('expected websocket', 426);
   }
 
-  const email = getEmail(c) ?? 'local@dev';
-  const id = c.req.query('id') ?? sandboxId(email);
+  // Get token from query param or header
+  const token = c.req.query('token') || extractBearerToken(c.req.header('Authorization'));
+
+  if (!token) {
+    return c.json({ error: 'Authentication required' }, 401);
+  }
+
+  const payload = await verifyJWT(token);
+  if (!payload) {
+    return c.json({ error: 'Invalid or expired token' }, 401);
+  }
+
+  const username = payload.sub;
+  const id = `shell:${username}`;
 
   // Get the container
   const container = getContainer(c.env.Sandbox, id);
@@ -104,6 +158,23 @@ app.get('/ws/terminal', async (c) => {
 
   // Proxy WebSocket to container
   return container.fetch(c.req.raw);
+});
+
+// Main terminal page (requires auth)
+app.get('/', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  const token = extractBearerToken(authHeader);
+
+  if (!token) {
+    return c.redirect('/login');
+  }
+
+  const payload = await verifyJWT(token);
+  if (!payload) {
+    return c.redirect('/login');
+  }
+
+  return c.html(html(payload.sub));
 });
 
 export default app;
