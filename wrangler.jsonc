@@ -1,5 +1,4 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "cloudshell",
   // account_id: Set via CLOUDFLARE_ACCOUNT_ID env var or remove to use default
   "main": "src/index.ts",
