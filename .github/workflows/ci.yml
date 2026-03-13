@@ -140,4 +140,4 @@ jobs:
       - name: Health check
         run: |
           sleep 10
-          curl -sf https://cloudshell.workers.dev/health || exit 1
+          curl -sf https://cloudshell.coy.workers.dev/health || exit 1
