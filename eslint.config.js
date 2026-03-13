@@ -21,6 +21,7 @@ export default [
         Buffer: 'readonly',
         atob: 'readonly',
         btoa: 'readonly',
+      },
     },
     plugins: {
       '@typescript-eslint': tsPlugin,
