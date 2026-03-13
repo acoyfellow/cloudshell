@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "cloudshell",
-  "account_id": "bfcb6ac5b3ceaf42a09607f6f7925823",
+  "account_id": "YOUR_ACCOUNT_ID",  // Get from https://dash.cloudflare.com
   "main": "src/index.ts",
   "compatibility_date": "2025-10-13",
   "compatibility_flags": ["nodejs_compat"],

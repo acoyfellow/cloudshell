@@ -1,321 +1,185 @@
 # CloudShell
 
-> Your personal VM on Cloudflare. Login, get a terminal. That's it.
+> Your personal terminal in the cloud. Deploy in seconds, access anywhere.
 
-## Quick Start [Tutorial]
+**Live demo**: https://cloudshell.coy.workers.dev/ (user: `admin`, pass: `admin`)
 
-Get your own CloudShell instance running in 5 minutes.
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/acoyfellow/cloudshell)
+
+---
+
+## Get Started [Tutorial]
 
 ### Prerequisites
 
-- A Cloudflare account (free tier works)
-- Node.js 20+ and npm
+- Node.js 20+
+- Cloudflare account (free tier works)
+- Wrangler CLI (`npm install -g wrangler`)
 
-### Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/cloudshell.git
-cd cloudshell
-
-# Install dependencies
-npm install
-```
-
-### First Deployment
+### One-Command Deploy
 
 ```bash
-# Deploy to Cloudflare Workers
-npm run deploy
-```
-
-The first deploy takes 2-3 minutes as Cloudflare provisions your container. Subsequent deploys are faster.
-
-### Set Up Access Control
-
-1. Go to [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/)
-2. Create an **Access Application** for your worker's URL
-3. Add a policy allowing your email address
-4. The `Cf-Access-Authenticated-User-Email` header will flow through automatically
-
-### Access Your Terminal
-
-1. Visit your worker URL
-2. Log in via Cloudflare Access
-3. Start using your terminal!
-
----
-
-## Installation Guide [Tutorial]
-
-### Step-by-Step Setup
-
-**1. Clone and Install**
-
-```bash
-git clone https://github.com/yourusername/cloudshell.git
+# Clone and install
+git clone https://github.com/acoyfellow/cloudshell.git
 cd cloudshell
 npm install
-```
 
-**2. Configure Wrangler**
-
-```bash
-# Log in to Cloudflare
+# Login to Cloudflare (first time only)
 npx wrangler login
-
-# Add your account ID to wrangler.toml
-# Get it from: https://dash.cloudflare.com → Workers & Pages
-```
-
-**3. Deploy**
-
-```bash
-npm run deploy
-```
-
-**4. Configure Cloudflare Access**
-
-1. Visit [Zero Trust Dashboard](https://one.dash.cloudflare.com/)
-2. Go to **Access → Applications**
-3. Click **Add an application**
-4. Select **Self-hosted**
-5. Enter your worker URL (e.g., `https://cloudshell.youraccount.workers.dev`)
-6. Add a policy:
-   - Name: "Allow My Email"
-   - Action: Allow
-   - Include: Email → your-email@example.com
-7. Save
-
-**5. Test It**
-
-Visit your URL, log in, and you should see a terminal!
-
----
-
-## Common Tasks [How-To Guide]
-
-### How to Customize Your Container
-
-Edit the `Dockerfile` to add your tools:
-
-```dockerfile
-FROM cloudflare/sandbox:latest
-
-# Add your tools here
-RUN apt-get update && apt-get install -y \
-    python3 \
-    pip \
-    nodejs \
-    npm \
-    vim \
-    htop
-
-# Set up your environment
-RUN echo 'export PS1="\\w $ "' >> ~/.bashrc
-```
-
-Then redeploy:
-
-```bash
-npm run deploy
-```
-
-### How to Run Locally
-
-```bash
-npm run dev
-```
-
-In local dev, there's no Access header, so the email defaults to `local@dev`. The sandbox still works.
-
-### How to Troubleshoot Connection Issues
-
-**Problem**: Terminal shows "disconnected"
-
-**Solutions**:
-
-1. Check Cloudflare Access is configured correctly
-2. Verify your email is allowed in the Access policy
-3. Check browser console for CSP errors
-4. Try a hard refresh (Ctrl+Shift+R)
-
-### How to Update Your Instance
-
-```bash
-# Pull latest changes
-git pull origin main
-
-# Install any new dependencies
-npm install
 
 # Deploy
 npm run deploy
 ```
 
+Visit your worker URL. Login with `admin`/`admin`. You have a terminal!
+
+### What Happens When You Deploy
+
+1. **Container builds** - Your Dockerfile becomes a container image
+2. **Worker deploys** - Hono.js worker handles auth and WebSocket proxy
+3. **Volume creates** - Persistent storage mounted at `/home/user`
+
 ---
 
-## API Reference [Reference]
+## How-To Guides
 
-### HTTP Endpoints
+### Change the Login Credentials
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Serves the terminal UI HTML |
-| `/health` | GET | Health check endpoint |
-| `/ws/terminal` | GET | WebSocket endpoint for terminal |
+```bash
+# Set custom username/password
+npx wrangler secret put AUTH_USERNAME
+npx wrangler secret put AUTH_PASSWORD
+```
 
-### WebSocket Protocol
+### Access Your Files Later
 
-Connect to `/ws/terminal?id=<sandbox-id>&session=<session-id>`
+Files in `/home/user` persist across sessions. Your container sleeps after 5 minutes of inactivity, but wakes up with your files intact.
 
-**Messages (Client → Server)**:
+### Run Locally for Development
 
-| Type | Format | Description |
-|------|--------|-------------|
-| Resize | `{"type": "resize", "cols": 80, "rows": 24}` | Resize terminal |
-| Input | Binary (Uint8Array) | Terminal input (keystrokes) |
+```bash
+npm run dev
+```
 
-**Messages (Server → Client)**:
+Opens at `http://localhost:8787`. Uses local container simulation.
 
-| Type | Format | Description |
-|------|--------|-------------|
-| Ready | `{"type": "ready"}` | Terminal ready |
-| Exit | `{"type": "exit", "code": 0}` | Shell exited |
-| Error | `{"type": "error", "message": "..."}` | Error message |
-| Output | Binary (Uint8Array) | Terminal output |
+### Custom Domain
+
+1. Add a custom domain in Cloudflare Workers dashboard
+2. Update `wrangler.jsonc` with your routes
+3. Redeploy: `npm run deploy`
+
+---
+
+## Reference
 
 ### Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `CLOUDFLARE_API_TOKEN` | For deployment (CI/CD only) |
+| Variable        | Required | Default | Description              |
+| --------------- | -------- | ------- | ------------------------ |
+| `AUTH_USERNAME` | No       | `admin` | HTTP Basic Auth username |
+| `AUTH_PASSWORD` | No       | `admin` | HTTP Basic Auth password |
 
-### Security Headers
+### Project Structure
 
-CloudShell sets the following security headers on all responses:
+```
+cloudshell/
+├── Dockerfile          # Container: Go WebSocket server with PTY
+├── src/
+│   ├── index.ts       # Worker: Auth, routing, WebSocket proxy
+│   ├── shell.ts       # Frontend: xterm.js terminal UI
+│   ├── types.ts       # TypeScript types
+│   └── security.test.ts # Unit tests
+├── wrangler.jsonc     # Cloudflare Workers config
+└── vitest.config.ts   # Test configuration
+```
 
-- `Content-Security-Policy`: Strict CSP with nonces
-- `X-Frame-Options: DENY`
-- `X-Content-Type-Options: nosniff`
-- `Referrer-Policy: strict-origin-when-cross-origin`
+### NPM Scripts
+
+| Command             | Description                    |
+| ------------------- | ------------------------------ |
+| `npm run dev`       | Start local development server |
+| `npm run deploy`    | Deploy to Cloudflare Workers   |
+| `npm run test`      | Run unit tests                 |
+| `npm run typecheck` | TypeScript type checking       |
+| `npm run lint`      | Run ESLint                     |
+
+### API Endpoints
+
+| Endpoint       | Method | Description                     |
+| -------------- | ------ | ------------------------------- |
+| `/`            | GET    | Terminal UI (HTML page)         |
+| `/health`      | GET    | Health check endpoint           |
+| `/ws/terminal` | GET    | WebSocket endpoint for terminal |
 
 ---
 
-## Architecture [Explanation]
+## Explanation
 
-### System Overview
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        Browser                              │
-│                     (xterm.js)                              │
-└──────────────────────┬──────────────────────────────────────┘
-                       │ WebSocket
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   Cloudflare Access                          │
-│              (Authentication & Identity)                     │
-└──────────────────────┬──────────────────────────────────────┘
-                       │ Cf-Access-Authenticated-User-Email
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│              Cloudflare Worker (Hono)                        │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │   Security   │  │   Session    │  │   Sandbox    │      │
-│  │  Middleware  │  │   Manager    │  │   Handler    │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
-└──────────────────────┬──────────────────────────────────────┘
-                       │ fetch()
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│              Sandbox SDK (Durable Object)                    │
-│          ┌────────────────────────────────┐                 │
-│          │    Container + PTY             │                 │
-│          │    (Linux Environment)         │                 │
-│          └────────────────────────────────┘                 │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Session Lifecycle
-
-Sessions follow this state machine:
+### Architecture
 
 ```
-┌─────────┐    connect    ┌─────────┐   activity   ┌─────────┐
-│  create │ ─────────────▶│  active │◀────────────▶│  idle   │
-└─────────┘               └─────────┘              └────┬────┘
-                                                        │
-                              30 min timeout            │
-                              (IDLE_TIMEOUT)            │
-                                                        ▼
-                                                 ┌─────────┐
-                                                 │ timeout │
-                                                 └────┬────┘
-                                                      │ destroy
-                                                      ▼
-                                                 ┌─────────┐
-                                                 │ destroy │
-                                                 └─────────┘
+Browser (xterm.js)
+    │WebSocket
+    ▼
+Cloudflare Worker (Hono.js)
+    │Auth + Proxy
+    ▼
+Container (Go Server)
+    │PTY
+    ▼
+Bash Shell
 ```
 
-### Security Model
+### How It Works
 
-CloudShell implements a defense-in-depth strategy:
+1. **Browser** connects via WebSocket to the Worker
+2. **Worker** validates HTTP Basic Auth credentials
+3. **Worker** proxies WebSocket to the Container
+4. **Container** creates a PTY (pseudo-terminal) running bash
+5. **I/O flows**: Browser ↔ Worker ↔ Container ↔ Bash
 
-**Layer 1: Authentication**
-- Cloudflare Access provides SSO/MFA
-- User identity verified via JWT
-- Email extracted from `Cf-Access-Authenticated-User-Email` header
+### Persistence Model
 
-**Layer 2: Authorization**
-- One sandbox per user
-- Sandbox ID derived deterministically from email
-- Sessions validated on each request
+- Each authenticated user gets a dedicated container instance
+- Container ID derived from username (e.g., `shell:admin`)
+- Volume `shell-data` mounted at `/home/user`
+- Files outside `/home/user` don't persist
 
-**Layer 3: Input Validation**
-- All inputs validated against strict patterns
-- Terminal input sanitized (control characters removed)
-- Sandbox IDs must match `shell:[a-z0-9-]+` pattern
+### Why Cloudflare Containers?
 
-**Layer 4: Rate Limiting**
-- WebSocket: 10 requests/minute per IP
-- HTTP: 30 requests/minute per IP
-- Prevents abuse and DoS
-
-**Layer 5: CSP Protection**
-- Nonce-based script loading
-- No inline scripts allowed
-- Strict dynamic imports
-
-**Layer 6: Origin Validation**
-- CSWSH protection via Origin header validation
-- Only allowed origins can connect via WebSocket
-
-**Layer 7: Session Management**
-- 30-minute idle timeout
-- Activity tracking on every interaction
-- Automatic cleanup of expired sessions
-
-### Container Model
-
-Each user gets:
-
-- **Dedicated sandbox**: Isolated from other users
-- **Persistent filesystem**: Files survive reconnections
-- **Warm container**: PTY stays alive for 5 minutes after disconnect
-- **Linux environment**: Full bash, common tools pre-installed
+- **Edge execution** - Containers run close to users globally
+- **Pay per use** - Only pay while container is running (sleeps after 5 min idle)
+- **No server management** - No VMs, no Kubernetes, just deploy
 
 ---
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and contribution guidelines.
+### Run Tests
 
-## Security
+```bash
+npm run test
+```
 
-See [SECURITY.md](SECURITY.md) for security policy and vulnerability reporting.
+### Type Check
+
+```bash
+npm run typecheck
+```
+
+### Local Development
+
+```bash
+npm run dev
+```
+
+---
 
 ## License
 
-MIT © CloudShell Contributors
+MIT
+
+---
+
+Built with ❤️ using [Cloudflare Workers](https://workers.cloudflare.com/) and [Containers](https://developers.cloudflare.com/containers/).
