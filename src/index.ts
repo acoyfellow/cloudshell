@@ -161,10 +161,30 @@ app.get('/ws/terminal', async (c) => {
   // Get the container - each user gets isolated instance
   const container = getContainer(c.env.Sandbox, id);
 
-  // Start if not running
-  const state = await container.getState();
-  if (state.status !== 'healthy') {
-    await container.start();
+  // Start container and wait for it to be ready
+  try {
+    console.log('[CloudShell] Getting container state for user:', username);
+    const state = await container.getState();
+    console.log('[CloudShell] Container state:', state.status);
+    
+    if (state.status === 'stopped' || state.status === 'stopped_with_code') {
+      console.log('[CloudShell] Starting container for user:', username);
+      await container.start();
+      // Wait for container to become healthy
+      let attempts = 0;
+      while (attempts < 30) {
+        const newState = await container.getState();
+        if (newState.status === 'healthy' || newState.status === 'running') {
+          console.log('[CloudShell] Container ready after', attempts, 'attempts');
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 500));
+        attempts++;
+      }
+    }
+  } catch (err) {
+    console.error('[CloudShell] Container error:', err);
+    return c.json({ error: 'Container unavailable. Please try again.' }, 503);
   }
 
   // Add username header for container to use

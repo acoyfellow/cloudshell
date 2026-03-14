@@ -1,5 +1,7 @@
 #!/bin/bash
-set -e# R2 FUSE mount (if credentials are provided)
+set -e
+
+# R2 FUSE mount (if credentials are provided)
 if [ -n "$R2_ACCOUNT_ID" ] && [ -n "$R2_ACCESS_KEY" ] && [ -n "$R2_SECRET_KEY" ] && [ -n "$R2_BUCKET_NAME" ]; then
     echo "Mounting R2 bucket $R2_BUCKET_NAME to /home/user ..."
     mkdir -p /home/user
