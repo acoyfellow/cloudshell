@@ -20,4 +20,5 @@ export interface Env {
   JWT_SECRET?: string;
   Sandbox: DurableObjectNamespace<Container>;
   USERS_KV: KVNamespace;
+  USER_DATA: R2Bucket;
 }

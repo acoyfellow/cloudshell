@@ -15,9 +15,13 @@ import type { Env } from './types';
 export { CloudShellTerminal, TerminalContainer, ShellContainer, CloudShellSandbox };
 
 // Current Container class
-class CloudShellTerminal extends Container {
+class CloudShellTerminal extends Container<Env> {
   defaultPort = 8080;
   sleepAfter = '5m';
+
+ override onStart() {
+    console.log('[CloudShell] Container started for user');
+  }
 }
 
 // Legacy classes for backwards compatibility
