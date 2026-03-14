@@ -163,8 +163,14 @@ app.get('/ws/terminal', async (c) => {
     await container.start();
   }
 
+  // Add username header for container to use
+  const headers = new Headers(c.req.raw.headers);
+  headers.set('X-User', username);
+
+  const request = new Request(c.req.raw, { headers });
+
   // Proxy WebSocket to container
-  return container.fetch(c.req.raw);
+  return container.fetch(request);
 });
 
 // Main terminal page (requires auth)

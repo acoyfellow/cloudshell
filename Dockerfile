@@ -20,12 +20,14 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
@@ -63,7 +65,14 @@ type ErrorMessage struct {
 }
 
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	// Upgrade HTTP to WebSocket
+	username := r.Header.Get("X-User")
+	if username == "" {
+		username = "default"
+	}
+
+	userHome := filepath.Join("/home/user", username)
+	os.MkdirAll(userHome, 0755)
+
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("WebSocket upgrade failed: %v", err)
@@ -73,9 +82,12 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	log.Println("WebSocket connection established")
 
-	// Start tmux session (creates new or attaches to existing)
-	cmd := exec.Command("tmux", "new-session", "-A", "-s", "cloudshell")
+	sessionName := fmt.Sprintf("shell-%s", username)
+
+	cmd := exec.Command("tmux", "new-session", "-A", "-s", sessionName)
+	cmd.Dir = userHome
 	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("HOME=%s", userHome),
 		"TERM=xterm-256color",
 	)
 
