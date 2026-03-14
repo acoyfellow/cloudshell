@@ -281,6 +281,9 @@ RUN apk add --no-cache \
     linux-headers \
     tmux
 
+# Configure git to use "main" as default branch
+RUN git config --global init.defaultBranch main
+
 # Create user for persistent home directory
 RUN adduser -D -s /bin/bash user
 

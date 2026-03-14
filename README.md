@@ -2,7 +2,7 @@
 
 > Your personal terminal in the cloud. Multi-user, persistent, with dev tools. Deploy in seconds.
 
-**[Live Demo](https://cloudshell.coy.workers.dev/)**
+**[Live Demo](https://cloudshell.coey.dev/)**
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/acoyfellow/cloudshell)
 

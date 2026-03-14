@@ -222,7 +222,7 @@ app.post('/api/ports/forward', async (c) => {
   const username = payload.sub;
   const containerId = getUserContainerId(username);
   const subdomain = `${port}-${containerId}`.replace(/:/g, '-');
-  const url = `https://${subdomain}.cloudshell.coy.workers.dev`;
+  const url = `https://${subdomain}.cloudshell.coey.dev`;
 
   return c.json({
     message: 'Port forward created (experimental)',
