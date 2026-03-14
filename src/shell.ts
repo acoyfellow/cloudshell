@@ -1,4 +1,4 @@
-export function html(username: string): string {
+export function html(username: string, token: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -65,18 +65,19 @@ export function html(username: string): string {
     let reconnectTimer = null;
     let reconnectDelay = 500;
 
+    const TOKEN = ${JSON.stringify(token)};
+    
     function connect() {
       if (ws && ws.readyState <= 1) return;
       setStatus("connecting");
 
-      const token = localStorage.getItem('cloudshell_token');
-      if (!token) {
+      if (!TOKEN) {
         window.location.href = '/login';
         return;
       }
 
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
-      const url = proto + "//" + location.host + "/ws/terminal?token=" + encodeURIComponent(token);
+      const url = proto + "//" + location.host + "/ws/terminal?token=" + encodeURIComponent(TOKEN);
 
       ws = new WebSocket(url);
       ws.binaryType = "arraybuffer";
@@ -253,8 +254,7 @@ export function loginHtml(): string {
         const data = await response.json();
 
         if (response.ok) {
-          localStorage.setItem('cloudshell_token', data.token);
-          window.location.href = '/';
+          window.location.href = '/?token=' + encodeURIComponent(data.token);
         } else {
           errorDiv.textContent = data.error || 'Login failed';
           errorDiv.style.display = 'block';

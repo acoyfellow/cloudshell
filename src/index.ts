@@ -169,8 +169,7 @@ app.get('/ws/terminal', async (c) => {
 
 // Main terminal page (requires auth)
 app.get('/', async (c) => {
-  const authHeader = c.req.header('Authorization');
-  const token = extractBearerToken(authHeader);
+  const token = c.req.query('token');
 
   if (!token) {
     return c.redirect('/login');
@@ -181,7 +180,7 @@ app.get('/', async (c) => {
     return c.redirect('/login');
   }
 
-  return c.html(html(payload.sub));
+  return c.html(html(payload.sub, token));
 });
 
 app.get('/api/ports', async (c) => {
