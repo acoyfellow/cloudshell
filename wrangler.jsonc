@@ -8,6 +8,15 @@
       "max_instances": 5,
       "class_name": "CloudShellTerminal",
       "image": "./Dockerfile",
+      "wrangler_ssh": {
+        "enabled": true,
+      },
+      "authorized_keys": [
+        {
+          "name": "admin",
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAIMjtNkWqUtqk3f2NM72VH/MPp6lFuHaQliYjsjHTYy coeyman@gmail.com",
+        },
+      ],
       "volumes": [
         {
           "name": "shell-data",
