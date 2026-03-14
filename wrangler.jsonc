@@ -8,6 +8,12 @@
       "max_instances": 5,
       "class_name": "CloudShellTerminal",
       "image": "./Dockerfile",
+      "volumes": [
+        {
+          "name": "shell-data",
+          "mount_path": "/home/user",
+        },
+      ],
     },
   ],
   "kv_namespaces": [
