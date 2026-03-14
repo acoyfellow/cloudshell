@@ -28,7 +28,10 @@ export function html(username: string, token: string): string {
 <body>
   <div id="bar">
     <span class="user">${username}</span>
-    <span id="status" class="status disconnected">disconnected</span>
+    <span>
+      <span id="status" class="status disconnected">disconnected</span>
+      <button onclick="logout()" style="margin-left:12px;background:#333;border:1px solid #444;color:#888;cursor:pointer;padding:2px 8px;font-size:11px;border-radius:3px;">logout</button>
+    </span>
   </div>
   <div id="terminal"></div>
 
@@ -67,7 +70,9 @@ export function html(username: string, token: string): string {
 
     const TOKEN = ${JSON.stringify(token)};
     
-    function connect() {
+    function logout() {
+      window.location.href = '/login';
+    }function connect() {
       if (ws && ws.readyState <= 1) return;
       setStatus("connecting");
 
@@ -117,8 +122,28 @@ export function html(username: string, token: string): string {
         }, reconnectDelay);
       };
 
-      ws.onerror = () => {
+      ws.onerror = (e) => {
+        console.error('WebSocket error:', e);
         ws.close();
+      };
+
+      ws.onclose = (event) => {
+        ready = false;
+        setStatus("disconnected");
+        
+        // Auto-logout on 1006 (abnormal closure) or 4030 (custom auth error)
+        if (event.code === 1006 || event.code === 4030) {
+          console.log('Connection lost, redirecting to login...');
+          logout();
+          return;
+        }
+        
+        if (reconnectTimer) return;
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          reconnectDelay = Math.min(reconnectDelay * 1.5, 10000);
+          connect();
+        }, reconnectDelay);
       };
     }
 
