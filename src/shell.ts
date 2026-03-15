@@ -347,9 +347,9 @@ export function html(username: string, token: string): string {
     }
 
     let portsVisible = false;
-    let forwardedPorts: { port: number; url: string }[] = [];
+    let forwardedPorts = [];
     let recording = false;
-    let terminalOutput: string[] = [];
+    let terminalOutput = [];
 
     function togglePorts() {
       portsVisible = !portsVisible;
@@ -358,7 +358,7 @@ export function html(username: string, token: string): string {
     }
 
     async function addPort() {
-      const input = document.getElementById('portNumber') as HTMLInputElement;
+      const input = document.getElementById('portNumber');
       const port = parseInt(input.value);
       if (!port || port < 1024 || port > 65535) return;
 
