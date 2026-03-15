@@ -15,6 +15,7 @@ export default [
       },
       globals: {
         DurableObjectNamespace: 'readonly',
+        DurableObjectState: 'readonly',
         DurableObjectStub: 'readonly',
         crypto: 'readonly',
         fetch: 'readonly',
@@ -22,6 +23,10 @@ export default [
         atob: 'readonly',
         btoa: 'readonly',
         console: 'readonly',
+        setTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearTimeout: 'readonly',
+        clearInterval: 'readonly',
       },
     },
     plugins: {

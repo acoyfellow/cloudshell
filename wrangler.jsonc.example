@@ -1,6 +1,6 @@
 {
   "name": "cloudshell",
-  "account_id": "bfcb6ac5b3ceaf42a09607f6f7925823",
+  "account_id": "YOUR_CLOUDFLARE_ACCOUNT_ID",
   "main": "src/index.ts",
   "compatibility_date": "2025-10-13",
   "compatibility_flags": ["nodejs_compat"],
@@ -21,7 +21,7 @@
   "kv_namespaces": [
     {
       "binding": "USERS_KV",
-      "id": "7f68572581e14065b12070267338044b"
+      "id": "YOUR_KV_NAMESPACE_ID"
     }
   ],
   "durable_objects": {
@@ -34,13 +34,13 @@
   },
   "migrations": [
     {
-      "tag": "v6",
+      "tag": "v1",
       "new_sqlite_classes": ["CloudShellTerminal"]
     }
   ],
   "vars": {
     "R2_BUCKET_NAME": "cloudshell-user-data",
-    "R2_ACCOUNT_ID": "bfcb6ac5b3ceaf42a09607f6f7925823"
+    "R2_ACCOUNT_ID": "YOUR_CLOUDFLARE_ACCOUNT_ID"
   },
   "observability": {
     "enabled": true

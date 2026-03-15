@@ -53,10 +53,10 @@ RUN adduser -D -s /bin/bash user
 COPY .tmux.conf /home/user/.tmux.conf
 RUN chown user:user /home/user/.tmux.conf
 
+COPY --from=build /server /server
 COPY startup.sh /startup.sh
 RUN chmod +x /startup.sh
 
-COPY --from=build /server /server
 EXPOSE 8080
 
 WORKDIR /home/user

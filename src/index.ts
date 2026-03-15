@@ -14,17 +14,27 @@ import type { Env } from './types';
 // Export the Container class for Durable Object binding
 export { CloudShellTerminal, TerminalContainer, ShellContainer, CloudShellSandbox };
 
-// Current Container class
-class CloudShellTerminal extends Container<Env> {
+class CloudShellTerminal extends Container {
   defaultPort = 8080;
   sleepAfter = '5m';
 
- override onStart() {
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  constructor(ctx: DurableObjectState<{}>, env: Env) {
+    super(ctx, env);
+    this.envVars = {
+      AWS_ACCESS_KEY_ID: env.AWS_ACCESS_KEY_ID,
+      AWS_SECRET_ACCESS_KEY: env.AWS_SECRET_ACCESS_KEY,
+      R2_BUCKET_NAME: env.R2_BUCKET_NAME,
+      R2_ACCOUNT_ID: env.R2_ACCOUNT_ID,
+    };
+  }
+
+  override onStart() {
     console.log('[CloudShell] Container started for user');
   }
 }
 
-// Legacy classes for backwards compatibility
+// Legacy classes for backwards compatibility with existing Durable Objects
 class TerminalContainer extends Container {
   defaultPort = 8080;
   sleepAfter = '5m';
@@ -66,14 +76,14 @@ app.post('/api/auth/login', async (c) => {
     }
 
     const user = JSON.parse(userData) as { passwordHash: string; createdAt: number };
-    const isValid = await verifyPassword(password, user.passwordHash);
+    const isValid = await verifyPassword(password, user.passwordHash, c.env);
 
     if (!isValid) {
       return c.json({ error: 'Invalid credentials' }, 401);
     }
 
     // Generate JWT
-    const { token, expires } = await generateJWT(username);
+    const { token, expires } = await generateJWT(username, c.env);
 
     return c.json({ token, expires });
   } catch {
@@ -98,7 +108,7 @@ app.post('/api/auth/register', async (c) => {
     }
 
     // Hash password and store
-    const passwordHash = await hashPassword(password);
+    const passwordHash = await hashPassword(password, c.env);
     const user = {
       username,
       passwordHash,
@@ -128,7 +138,7 @@ app.use('/api/*', async (c, next) => {
     return c.json({ error: 'Authentication required' }, 401);
   }
 
-  const payload = await verifyJWT(token);
+  const payload = await verifyJWT(token, c.env);
   if (!payload) {
     return c.json({ error: 'Invalid or expired token' }, 401);
   }
@@ -150,7 +160,7 @@ app.get('/ws/terminal', async (c) => {
     return c.json({ error: 'Authentication required' }, 401);
   }
 
-  const payload = await verifyJWT(token);
+  const payload = await verifyJWT(token, c.env);
   if (!payload) {
     return c.json({ error: 'Invalid or expired token' }, 401);
   }
@@ -163,28 +173,23 @@ app.get('/ws/terminal', async (c) => {
 
   // Start container and wait for it to be ready
   try {
-    console.log('[CloudShell] Getting container state for user:', username);
     const state = await container.getState();
-    console.log('[CloudShell] Container state:', state.status);
+    console.log('[CloudShell] Initial container state:', state.status);
     
+    // Start if not healthy or running
     if (state.status === 'stopped' || state.status === 'stopped_with_code') {
-      console.log('[CloudShell] Starting container for user:', username);
-      await container.start();
-      // Wait for container to become healthy
-      let attempts = 0;
-      while (attempts < 30) {
-        const newState = await container.getState();
-        if (newState.status === 'healthy' || newState.status === 'running') {
-          console.log('[CloudShell] Container ready after', attempts, 'attempts');
-          break;
-        }
-        await new Promise(resolve => setTimeout(resolve, 500));
-        attempts++;
-      }
+      console.log('[CloudShell] Starting stopped container...');
+      await container.startAndWaitForPorts({ ports: [8080] });
+    } else if (state.status === 'running') {
+      // Container is already starting, wait for it
+      console.log('[CloudShell] Container is starting, waiting for ports...');
+      await container.waitForPort({ portToCheck: 8080 });
     }
+    
+    console.log('[CloudShell] Container is healthy, proxying request');
   } catch (err) {
     console.error('[CloudShell] Container error:', err);
-    return c.json({ error: 'Container unavailable. Please try again.' }, 503);
+    return c.json({ error: 'Container error, please retry in a moment.' }, 503);
   }
 
   // Add username header for container to use
@@ -205,7 +210,7 @@ app.get('/', async (c) => {
     return c.redirect('/login');
   }
 
-  const payload = await verifyJWT(token);
+  const payload = await verifyJWT(token, c.env);
   if (!payload) {
     return c.redirect('/login');
   }
@@ -221,7 +226,7 @@ app.get('/api/ports', async (c) => {
     return c.json({ error: 'Authentication required' }, 401);
   }
 
-  const payload = await verifyJWT(token);
+  const payload = await verifyJWT(token, c.env);
   if (!payload) {
     return c.json({ error: 'Invalid or expired token' }, 401);
   }
@@ -237,7 +242,7 @@ app.post('/api/ports/forward', async (c) => {
     return c.json({ error: 'Authentication required' }, 401);
   }
 
-  const payload = await verifyJWT(token);
+  const payload = await verifyJWT(token, c.env);
   if (!payload) {
     return c.json({ error: 'Invalid or expired token' }, 401);
   }
@@ -270,7 +275,7 @@ app.post('/api/container/custom', async (c) => {
     return c.json({ error: 'Authentication required' }, 401);
   }
 
-  const payload = await verifyJWT(token);
+  const payload = await verifyJWT(token, c.env);
   if (!payload) {
     return c.json({ error: 'Invalid or expired token' }, 401);
   }

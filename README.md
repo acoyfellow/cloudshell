@@ -1,23 +1,18 @@
 # CloudShell
 
-> Your personal terminal in the cloud. Multi-user, persistent, with dev tools. Deploy in seconds.
+> Your personal terminal in the cloud. Multi-user, persistent, with dev tools.
 
-**[Live Demo](https://cloudshell.coey.dev/)**
-
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/acoyfellow/cloudshell)
-
-![CloudShell Terminal Demo](docs/images/terminal-demo.png)
+Browser-based terminal with JWT authentication, per-user containers, and R2 persistent storage.
 
 ---
 
 ## Features
 
-- **Multi-user JWT Authentication** - Secure login with 24h tokens, user isolation
+- **Multi-user JWT Authentication** - Secure login with 24h tokens
 - **Persistent Sessions** - tmux keeps your terminal state across disconnects
-- **Dev Tools Pre-installed** - git, node, python, vim, htop, jq, and more
-- **Port Forwarding** - Expose services running in your container via unique URLs
+- **R2 File Storage** - Files persist in Cloudflare R2
 - **Per-user Containers** - Each user gets isolated container instance
-- **Custom Dockerfiles** - Save your own container configuration
+- **Dev Tools Pre-installed** - git, node, python, vim, htop, jq, tmux, curl
 
 ---
 
@@ -26,24 +21,47 @@
 ### Prerequisites
 
 - Node.js 20+
-- Cloudflare account with Containers enabled (beta)
+- Cloudflare account with Workers Paid plan (Containers beta enabled)
 - Wrangler CLI (`npm install -g wrangler`)
 
-### Deploy in 30 Seconds
+### Deploy in 5 Minutes
 
 ```bash
-# Clone and install
-git clone https://github.com/acoyfellow/cloudshell.git
+# 1. Clone and install
+git clone https://github.com/yourusername/cloudshell.git
 cd cloudshell
 npm install
 
-# Login to Cloudflare (first time only)
+# 2. Login to Cloudflare
 npx wrangler login
 
-# Create KV namespace for user storage
+# 3. Create KV namespace
 npx wrangler kv:namespace create "USERS_KV"
+# Copy the returned ID to wrangler.jsonc -> kv_namespaces[0].id
 
-# Deploy
+# 4. Create R2 bucket
+npx wrangler r2 bucket create cloudshell-user-data
+
+# 5. Create R2 API token
+# Go to: https://dash.cloudflare.com/?to=/:account/r2/overview
+# Click "Manage R2 API Tokens" > Create API Token
+# Permissions: Object Read & Write, Bucket: cloudshell-user-data
+# Copy Access Key ID and Secret Access Key
+
+# 6. Set secrets
+npx wrangler secret put JWT_SECRET
+# Enter a secure random string (e.g., output of: openssl rand -hex 32)
+
+npx wrangler secret put AWS_ACCESS_KEY_ID
+# Enter your R2 Access Key ID
+
+npx wrangler secret put AWS_SECRET_ACCESS_KEY
+# Enter your R2 Secret Access Key
+
+# 7. Update wrangler.jsonc
+# Replace YOUR_CLOUDFLARE_ACCOUNT_ID with your account ID
+
+# 8. Deploy
 npm run deploy
 ```
 
@@ -51,37 +69,39 @@ Your terminal will be live at `https://your-worker.workers.dev`
 
 ---
 
-## Authentication
+## Configuration
 
-CloudShell uses JWT-based authentication stored in Cloudflare KV.
+### Required Secrets
 
-### First User Registration
+Set via `wrangler secret put <NAME>`:
 
-```bash
-# Register your admin account
-curl -X POST https://your-worker.workers.dev/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "your-secure-password"}'
+| Secret | Description |
+|--------|-------------|
+| `JWT_SECRET` | Random string for JWT signing (32+ chars recommended) |
+| `AWS_ACCESS_KEY_ID` | R2 API token Access Key ID |
+| `AWS_SECRET_ACCESS_KEY` | R2 API token Secret Access Key |
+
+### wrangler.jsonc Configuration
+
+```jsonc
+{
+  "account_id": "YOUR_CLOUDFLARE_ACCOUNT_ID",
+  "vars": {
+    "R2_BUCKET_NAME": "cloudshell-user-data",
+    "R2_ACCOUNT_ID": "YOUR_CLOUDFLARE_ACCOUNT_ID"
+  }
+}
 ```
-
-### Login
-
-1. Visit `https://your-worker.workers.dev/login`
-2. Enter your credentials
-3. JWT token is stored in browser localStorage
-4. Token expires after 24 hours
 
 ---
 
 ## API Reference
 
-### Authentication Endpoints
+### Authentication
 
-#### POST /api/auth/login
+#### POST /api/auth/register
 
-Authenticate and receive JWT token.
-
-**Request:**
+Create a new user account.
 
 ```json
 {
@@ -90,7 +110,18 @@ Authenticate and receive JWT token.
 }
 ```
 
-**Response:**
+#### POST /api/auth/login
+
+Authenticate and receive JWT token.
+
+```json
+{
+  "username": "admin",
+  "password": "your-password"
+}
+```
+
+Returns:
 
 ```json
 {
@@ -99,284 +130,69 @@ Authenticate and receive JWT token.
 }
 ```
 
-#### POST /api/auth/register
-
-Create a new user account.
-
-**Request:**
-
-```json
-{
-  "username": "newuser",
-  "password": "secure-password"
-}
-```
-
-**Response:**
-
-```json
-{
-  "message": "User created successfully"
-}
-```
-
-### Port Forwarding Endpoints
-
-#### GET /api/ports
-
-List active port forwards (requires Bearer token).
-
-**Headers:**
-
-```
-Authorization: Bearer <token>
-```
-
-**Response:**
-
-```json
-{
-  "forwards": [
-    {
-      "port": 3000,
-      "url": "https://3000-shell-admin.cloudshell.workers.dev",
-      "subdomain": "3000-shell-admin"
-    }
-  ]
-}
-```
-
-#### POST /api/ports/forward
-
-Create a port forward.
-
-**Headers:**
-
-```
-Authorization: Bearer <token>
-Content-Type: application/json
-```
-
-**Request:**
-
-```json
-{
-  "port": 3000
-}
-```
-
-**Response:**
-
-```json
-{
-  "message": "Port forward created (experimental)",
-  "port": 3000,
-  "url": "https://3000-shell-admin.cloudshell.workers.dev",
-  "subdomain": "3000-shell-admin"
-}
-```
-
-**Note:** Port must be between 1024-65535.
-
-### Container Customization Endpoints
-
-#### POST /api/container/custom
-
-Save a custom Dockerfile for your user.
-
-**Headers:**
-
-```
-Authorization: Bearer <token>
-Content-Type: application/json
-```
-
-**Request:**
-
-```json
-{
-  "dockerfile": "FROM node:18-alpine\nWORKDIR /app\nRUN npm install -g typescript"
-}
-```
-
-**Response:**
-
-```json
-{
-  "message": "Custom Dockerfile saved",
-  "note": "To apply changes, rebuild and redeploy the container",
-  "nextSteps": [
-    "1. Clone the repository",
-    "2. Replace Dockerfile with your custom content",
-    "3. Run: wrangler deploy"
-  ]
-}
-```
-
 ### Health Check
 
 #### GET /health
 
-Health check endpoint (public).
-
-**Response:**
-
 ```json
-{
-  "status": "ok"
-}
+{ "status": "ok" }
 ```
-
----
-
-## Using Port Forwarding
-
-Start a server in your terminal:
-
-```bash
-# Terminal 1 - Start a server
-python3 -m http.server 8080
-```
-
-Create port forward via API:
-
-```bash
-# Terminal 2 - Forward the port
-curl -X POST https://your-worker.workers.dev/api/ports/forward \
-  -H "Authorization: Bearer <your-token>" \
-  -H "Content-Type: application/json" \
-  -d '{"port": 8080}'
-```
-
-Access your service at the returned URL:
-
-```
-https://8080-shell-yourname.cloudshell.workers.dev
-```
-
----
-
-## Pre-installed Tools
-
-Your container comes with these tools ready to use:
-
-| Category               | Tools          |
-| ---------------------- | -------------- |
-| **Version Control**    | git            |
-| **Text Editors**       | vim, nano      |
-| **System Monitoring**  | htop, tree     |
-| **Data Processing**    | jq             |
-| **JavaScript**         | node, npm      |
-| **Python**             | python3, pip3  |
-| **Build Tools**        | make, gcc, g++ |
-| **Session Management** | tmux           |
-| **Network**            | curl, wget     |
-
-### tmux Session Persistence
-
-Your terminal runs inside tmux. This means:
-
-- **Reconnect without losing state** - Detach and reattach automatically
-- **Multiple windows** - Press `Ctrl+b c` to create new window
-- **Scrollback** - Press `Ctrl+b [` to enter scroll mode
-
-**tmux Cheat Sheet:**
-
-- `Ctrl+b d` - Detach from session
-- `Ctrl+b c` - Create new window
-- `Ctrl+b n` - Next window
-- `Ctrl+b p` - Previous window
-- `Ctrl+b %` - Split vertically
-- `Ctrl+b "` - Split horizontally
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────┐
-│  Browser        │
-│  (xterm.js)     │
-└────────┬────────┘
-         │ WebSocket
-         ▼
-┌─────────────────┐
-│  Cloudflare     │
-│  Worker         │
-│  (Hono.js)      │
-│                 │
-│  • JWT Auth     │
-│  • API Routes   │
-│  • WebSocket    │
-│    Proxy        │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Container      │
-│  (Go Server)    │
-│                 │
-│  • WebSocket    │
-│  • PTY          │
-│  • tmux         │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Bash Shell     │
-│  + Dev Tools    │
-└─────────────────┘
+Browser (xterm.js)
+    │ WebSocket
+    ▼
+Cloudflare Worker (Hono.js)
+    │ JWT Auth, WebSocket Proxy
+    ▼
+Cloudflare Container (Go + tmux)
+    │ PTY, Shell
+    ▼
+R2 Bucket (Persistent Storage)
 ```
 
-### Data Flow
-
-1. **Login** → POST `/api/auth/login` returns JWT token
-2. **Terminal** → Browser connects via WebSocket to `/ws/terminal`
-3. **Auth** → Worker validates JWT from query param or header
-4. **Container** → Worker proxies to user's isolated container
-5. **Session** → Container runs tmux, survives disconnects
-6. **Files** → Persist in volume mounted at `/home/user`
+- **Worker**: Handles JWT auth, routes requests, proxies WebSocket to containers
+- **Container**: Per-user isolated Alpine Linux with dev tools
+- **R2 Storage**: FUSE-mounted at `/home/user` for persistent files
 
 ---
 
-## Configuration
+## Pre-installed Tools
 
-### Environment Variables
+| Category | Tools |
+|----------|-------|
+| Version Control | git |
+| Text Editors | vim, nano |
+| System Monitoring | htop, tree |
+| Data Processing | jq |
+| JavaScript | node, npm |
+| Python | python3, pip3 |
+| Build Tools | make, gcc, g++ |
+| Session Management | tmux |
+| Network | curl, wget |
 
-Set these via `wrangler secret`:
+### tmux Session Persistence
 
-| Variable                | Purpose                    |
-| ----------------------- | -------------------------- |
-| `CLOUDFLARE_API_TOKEN`  | For CI/CD deployments      |
-| `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID |
-| `CLOUDFLARE_EMAIL`      | Your Cloudflare email      |
+Your terminal runs inside tmux:
 
-### KV Namespace
-
-Required for user storage:
-
-```bash
-npx wrangler kv:namespace create "USERS_KV"
-```
-
-Update `wrangler.jsonc` with the returned namespace ID.
+- `Ctrl+b d` - Detach from session
+- `Ctrl+b c` - Create new window
+- `Ctrl+b n/p` - Next/previous window
+- `Ctrl+b [` - Enter scroll mode
 
 ---
 
 ## Development
 
-### Local Development
-
 ```bash
+# Local development
 npm run dev
-```
 
-Opens at `http://localhost:8787`.
-
-### Testing
-
-```bash
-# Run unit tests
+# Run tests
 npm run test
 
 # Type checking
@@ -386,21 +202,22 @@ npm run typecheck
 npm run lint
 ```
 
-### Project Structure
+---
+
+## Project Structure
 
 ```
 cloudshell/
 ├── src/
-│   ├── index.ts          # Main worker (routes, auth)
-│   ├── auth.ts           # JWT utilities
-│   ├── auth.test.ts      # Auth unit tests
-│   ├── shell.ts          # Frontend HTML/JS
-│   ├── security.ts       # Security utilities
-│   ├── security.test.ts  # Security tests
-│   └── types.ts          # TypeScript types
-├── Dockerfile            # Container definition
-├── .tmux.conf           # tmux configuration
-├── wrangler.jsonc       # Workers config
+│   ├── index.ts       # Worker entry, routes, container proxy
+│   ├── auth.ts         # JWT utilities
+│   ├── shell.ts        # Frontend HTML/xterm.js
+│   └── types.ts        # TypeScript definitions
+├── container/
+│   └── main.go         # Go WebSocket server
+├── Dockerfile          # Container image
+├── startup.sh          # R2 FUSE mount script
+├── wrangler.jsonc      # Workers config
 └── package.json
 ```
 
@@ -408,11 +225,10 @@ cloudshell/
 
 ## Security
 
-- **JWT tokens** expire after 24 hours
-- **Password hashing** uses SHA-256 with salt
-- **Container isolation** - Each user gets separate container instance
-- **Path sanitization** - Prevents directory traversal
-- **Rate limiting** - Built into Cloudflare Workers
+- JWT tokens expire after 24 hours
+- Passwords hashed with SHA-256
+- Per-user container isolation
+- Files stored in R2 with user-specific prefixes
 
 ---
 
@@ -420,16 +236,20 @@ cloudshell/
 
 ### Container won't start
 
-Check Cloudflare Containers are enabled on your account (beta feature).
+1. Verify Containers are enabled on your account
+2. Check R2 secrets are set: `wrangler secret list`
+3. Verify `wrangler.jsonc` has correct `account_id`
+
+### Files not persisting
+
+1. Verify R2 bucket exists: `wrangler r2 bucket list`
+2. Check R2 API token has correct permissions
+3. Verify secrets are set correctly
 
 ### Can't login
 
-1. Verify KV namespace is created and bound in `wrangler.jsonc`
-2. Check user exists: `npx wrangler kv:key get "user:username" --namespace-id=<id>`
-
-### Port forwarding not working
-
-Port forwarding API is experimental. The URL generation works but full WebSocket proxying requires additional Cloudflare configuration.
+1. Verify KV namespace is created and bound
+2. Check user exists: `wrangler kv:key get "user:admin" --namespace-id=<id>`
 
 ---
 
@@ -439,4 +259,4 @@ MIT
 
 ---
 
-Built for fun using [Cloudflare Workers](https://workers.cloudflare.com/) and [Containers](https://developers.cloudflare.com/containers/).
+Built with [Cloudflare Workers](https://workers.cloudflare.com/) and [Containers](https://developers.cloudflare.com/containers/).
