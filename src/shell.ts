@@ -111,30 +111,13 @@ export function html(username: string, token: string): string {
         }
       };
 
-      ws.onclose = () => {
-        ready = false;
-        setStatus("disconnected");
-        if (reconnectTimer) return;
-        reconnectTimer = setTimeout(() => {
-          reconnectTimer = null;
-          reconnectDelay = Math.min(reconnectDelay * 1.5, 10000);
-          connect();
-        }, reconnectDelay);
-      };
-
-      ws.onerror = (e) => {
-        console.error('WebSocket error:', e);
-        ws.close();
-      };
-
       ws.onclose = (event) => {
         ready = false;
         setStatus("disconnected");
         
-        // Auto-logout on 1006 (abnormal closure) or 4030 (custom auth error)
-        if (event.code === 1006 || event.code === 4030) {
-          console.log('Connection lost, redirecting to login...');
-          logout();
+        if (event.code === 4030) {
+          console.log('Auth error, redirecting to login...');
+          window.location.href = '/login';
           return;
         }
         
