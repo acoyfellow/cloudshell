@@ -58,11 +58,12 @@ async function restoreSession(container: ReturnType<typeof getContainer>, userna
         headers: { 'X-User': username },
       })
     );
-    const result = await response.json() as { restored: boolean };
+    interface RestoreResult { restored: boolean }
+    const result: RestoreResult = await response.json();
     if (result.restored) {
       console.log('[CloudShell] Session restored for', username);
     }
-  } catch (e) {
+  } catch {
     console.log('[CloudShell] No session to restore for', username);
   }
 }
@@ -334,7 +335,8 @@ app.get('/api/tabs', async (c) => {
 
   const username = payload.sub;
   const tabs = await c.env.USERS_KV.get(`tabs:${username}`);
-  return c.json({ tabs: tabs ? JSON.parse(tabs) : [] });
+  interface Tab { id: string; name: string; sessionId: string; createdAt: number }
+  return c.json({ tabs: tabs ? JSON.parse(tabs) as Tab[] : [] });
 });
 
 app.post('/api/tabs', async (c) => {
@@ -351,11 +353,12 @@ app.post('/api/tabs', async (c) => {
   }
 
   const username = payload.sub;
+  interface Tab { id: string; name: string; sessionId: string; createdAt: number }
   const body = await c.req.json<{ name: string; sessionId: string }>();
-  const tab = { id: crypto.randomUUID(), name: body.name, sessionId: body.sessionId, createdAt: Date.now() };
+  const tab: Tab = { id: crypto.randomUUID(), name: body.name, sessionId: body.sessionId, createdAt: Date.now() };
   
   const existing = await c.env.USERS_KV.get(`tabs:${username}`);
-  const tabs = existing ? JSON.parse(existing) : [];
+  const tabs: Tab[] = existing ? JSON.parse(existing) as Tab[] : [];
   tabs.push(tab);
   await c.env.USERS_KV.put(`tabs:${username}`, JSON.stringify(tabs));
   
@@ -404,8 +407,9 @@ app.get('/api/ssh-keys', async (c) => {
   }
 
   const username = payload.sub;
+  interface SSHKey { id: string; name: string; key: string; createdAt: number }
   const keys = await c.env.USERS_KV.get(`ssh-keys:${username}`);
-  return c.json({ keys: keys ? JSON.parse(keys) : [] });
+  return c.json({ keys: keys ? JSON.parse(keys) as SSHKey[] : [] });
 });
 
 app.post('/api/ssh-keys', async (c) => {
@@ -422,10 +426,11 @@ app.post('/api/ssh-keys', async (c) => {
   }
 
   const username = payload.sub;
+  interface SSHKey { id: string; name: string; key: string; createdAt: number }
   const body = await c.req.json<{ name: string; key: string }>();
   
   const existing = await c.env.USERS_KV.get(`ssh-keys:${username}`);
-  const keys = existing ? JSON.parse(existing) : [];
+  const keys: SSHKey[] = existing ? JSON.parse(existing) as SSHKey[] : [];
   keys.push({ id: crypto.randomUUID(), name: body.name, key: body.key, createdAt: Date.now() });
   await c.env.USERS_KV.put(`ssh-keys:${username}`, JSON.stringify(keys));
   
@@ -479,10 +484,11 @@ app.delete('/api/ssh-keys/:id', async (c) => {
 
   const username = payload.sub;
   const id = c.req.param('id');
+  interface SSHKey { id: string; name: string; key: string; createdAt: number }
   
   const existing = await c.env.USERS_KV.get(`ssh-keys:${username}`);
-  const keys = existing ? JSON.parse(existing) : [];
-  const filtered = keys.filter((k: { id: string }) => k.id !== id);
+  const keys: SSHKey[] = existing ? JSON.parse(existing) as SSHKey[] : [];
+  const filtered = keys.filter((k) => k.id !== id);
   await c.env.USERS_KV.put(`ssh-keys:${username}`, JSON.stringify(filtered));
   
   return c.json({ success: true });
@@ -496,7 +502,8 @@ app.get('/api/share/:token', async (c) => {
     return c.json({ error: 'Invalid or expired share link' }, 404);
   }
 
-  const data = JSON.parse(shareData);
+  interface ShareData { username: string; permissions: string; expiresAt: number }
+  const data = JSON.parse(shareData) as ShareData;
   if (Date.now() > data.expiresAt) {
     return c.json({ error: 'Share link expired' }, 410);
   }
@@ -519,10 +526,11 @@ app.delete('/api/tabs/:id', async (c) => {
 
   const username = payload.sub;
   const id = c.req.param('id');
+  interface Tab { id: string; name: string; sessionId: string; createdAt: number }
   
   const existing = await c.env.USERS_KV.get(`tabs:${username}`);
-  const tabs = existing ? JSON.parse(existing) : [];
-  const filtered = tabs.filter((t: { id: string }) => t.id !== id);
+  const tabs: Tab[] = existing ? JSON.parse(existing) as Tab[] : [];
+  const filtered = tabs.filter((t) => t.id !== id);
   await c.env.USERS_KV.put(`tabs:${username}`, JSON.stringify(filtered));
   
   return c.json({ success: true });

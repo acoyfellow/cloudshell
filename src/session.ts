@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 import type { Session } from './types';
 import { getSessionScrollback, createSession, sendKeys } from './tmux';
 
@@ -41,7 +42,7 @@ export async function listSessions(
     const object = await r2.get(obj.key);
     if (object) {
       const text = await object.text();
-      sessions.push(JSON.parse(text));
+      sessions.push(JSON.parse(text) as Session);
     }
   }
   

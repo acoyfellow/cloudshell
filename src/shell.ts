@@ -176,7 +176,8 @@ export function html(username: string, token: string): string {
       tabs.forEach(tab => {
         const div = document.createElement('div');
         div.className = 'tab' + (tab.active ? ' active' : '');
-        div.innerHTML = '<span>' + tab.name + '</span>' + (tabs.length > 1 ? '<span class="tab-close" onclick="event.stopPropagation();closeTab(\'' + tab.id + '\')">×</span>' : '');
+        const closeBtn = tabs.length > 1 ? '<span class="tab-close" onclick="event.stopPropagation();closeTab(' + "'" + tab.id + "'" + ')">×</span>' : '';
+        div.innerHTML = '<span>' + tab.name + '</span>' + closeBtn;
         div.onclick = () => switchTab(tab.id);
         list.appendChild(div);
       });

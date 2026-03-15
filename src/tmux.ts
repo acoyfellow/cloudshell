@@ -1,7 +1,4 @@
 import { spawn } from 'child_process';
-import { promisify } from 'util';
-
-const execAsync = promisify(spawn);
 
 export async function createSession(name: string): Promise<void> {
   const proc = spawn('tmux', ['new-session', '-d', '-s', name]);
@@ -33,7 +30,7 @@ export async function listSessions(): Promise<string[]> {
   const proc = spawn('tmux', ['list-sessions', '-F', '#{session_name}']);
   let output = '';
   
-  proc.stdout?.on('data', (data) => {
+  proc.stdout?.on('data', (data: Buffer) => {
     output += data.toString();
   });
   
@@ -66,7 +63,7 @@ export async function getSessionScrollback(name: string, lines: number = 1000): 
   const proc = spawn('tmux', ['capture-pane', '-t', name, '-p', '-S', `-${lines}`]);
   let output = '';
   
-  proc.stdout?.on('data', (data) => {
+  proc.stdout?.on('data', (data: Buffer) => {
     output += data.toString();
   });
   
