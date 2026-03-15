@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
 import { Container, getContainer } from '@cloudflare/containers';
+import { getSandbox } from '@cloudflare/sandbox';
+import type { BackupHandle } from './types';
 import { html, loginHtml } from './shell';
 import {
   generateJWT,
@@ -50,21 +52,41 @@ class CloudShellSandbox extends Container {
   sleepAfter = '5m';
 }
 
-async function restoreSession(container: ReturnType<typeof getContainer>, username: string): Promise<void> {
+async function restoreFromBackup(env: Env, username: string): Promise<boolean> {
   try {
-    const response = await container.fetch(
-      new Request('http://localhost:8080/api/session/restore', {
-        method: 'POST',
-        headers: { 'X-User': username },
-      })
-    );
-    interface RestoreResult { restored: boolean }
-    const result: RestoreResult = await response.json();
-    if (result.restored) {
-      console.log('[CloudShell] Session restored for', username);
+    const backupData = await env.USERS_KV.get(`backup:${username}`);
+    if (!backupData) {
+      console.log('[CloudShell] No backup found for', username);
+      return false;
     }
-  } catch {
-    console.log('[CloudShell] No session to restore for', username);
+    
+    const backup = JSON.parse(backupData) as BackupHandle;
+    const sandbox = getSandbox(env.Sandbox as never, getUserContainerId(username));
+    
+    await sandbox.restoreBackup(backup);
+    console.log('[CloudShell] Backup restored for', username);
+    
+    await env.USERS_KV.delete(`backup:${username}`);
+    return true;
+  } catch (error) {
+    console.error('[CloudShell] Failed to restore backup:', error);
+    return false;
+  }
+}
+
+async function createBackup(env: Env, username: string): Promise<void> {
+  try {
+    const sandbox = getSandbox(env.Sandbox as never, getUserContainerId(username));
+    const backup = await sandbox.createBackup({
+      dir: '/home/user',
+      name: `session-${username}`,
+      ttl: 604800,
+    });
+    
+    await env.USERS_KV.put(`backup:${username}`, JSON.stringify(backup));
+    console.log('[CloudShell] Backup created for', username);
+  } catch (error) {
+    console.error('[CloudShell] Failed to create backup:', error);
   }
 }
 
@@ -194,11 +216,10 @@ app.get('/ws/terminal', async (c) => {
     const state = await container.getState();
     console.log('[CloudShell] Initial container state:', state.status);
     
-    // Start if not healthy or running
     if (state.status === 'stopped' || state.status === 'stopped_with_code') {
       console.log('[CloudShell] Starting stopped container...');
       await container.startAndWaitForPorts({ ports: [8080] });
-      await restoreSession(container, username);
+      await restoreFromBackup(c.env, username);
     } else if (state.status === 'running') {
       // Container is already starting, wait for it
       console.log('[CloudShell] Container is starting, waiting for ports...');
@@ -467,6 +488,24 @@ app.post('/api/recording/stop', async (c) => {
   }
 
   return c.json({ saved: true, stoppedAt: Date.now() });
+});
+
+app.post('/api/backup', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  const token = extractBearerToken(authHeader);
+
+  if (!token) {
+    return c.json({ error: 'Authentication required' }, 401);
+  }
+
+  const payload = await verifyJWT(token, c.env);
+  if (!payload) {
+    return c.json({ error: 'Invalid or expired token' }, 401);
+  }
+
+  const username = payload.sub;
+  await createBackup(c.env, username);
+  return c.json({ success: true });
 });
 
 app.delete('/api/ssh-keys/:id', async (c) => {
