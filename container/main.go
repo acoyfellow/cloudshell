@@ -186,8 +186,24 @@ func sendJSON(ws *websocket.Conn, msg interface{}) bool {
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	health := map[string]interface{}{
+		"status":     "ok",
+		"fuse_mount": checkFuseMount(),
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(health)
+}
+
+func checkFuseMount() bool {
+	if _, err := os.Stat("/home/user/.ash_history"); err == nil {
+		return true
+	}
+	file, err := os.CreateTemp("/home/user", "health_check_")
+	if err != nil {
+		return false
+	}
+	os.Remove(file.Name())
+	return true
 }
 
 func main() {
