@@ -134,9 +134,16 @@ Returns:
 
 #### GET /health
 
+Returns container and storage status:
+
 ```json
-{ "status": "ok" }
+{ "status": "ok", "fuse_mount": true }
 ```
+
+| Field | Description |
+|-------|-------------|
+| `status` | Overall health (`ok` or `error`) |
+| `fuse_mount` | R2 storage mounted successfully |
 
 ---
 
