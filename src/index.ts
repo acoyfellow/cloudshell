@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
 import { Container, getContainer } from '@cloudflare/containers';
+import { getSandbox } from '@cloudflare/sandbox';
+import type { BackupHandle } from './types';
 import { html, loginHtml } from './shell';
 import {
   generateJWT,
@@ -50,21 +52,43 @@ class CloudShellSandbox extends Container {
   sleepAfter = '5m';
 }
 
-async function restoreSession(container: ReturnType<typeof getContainer>, username: string): Promise<void> {
+async function restoreFromBackup(env: Env, username: string): Promise<boolean> {
   try {
-    const response = await container.fetch(
-      new Request('http://localhost:8080/api/session/restore', {
-        method: 'POST',
-        headers: { 'X-User': username },
-      })
-    );
-    interface RestoreResult { restored: boolean }
-    const result: RestoreResult = await response.json();
-    if (result.restored) {
-      console.log('[CloudShell] Session restored for', username);
+    const backupData = await env.USERS_KV.get(`backup:${username}`);
+    if (!backupData) {
+      console.log('[CloudShell] No backup found for', username);
+      return false;
     }
-  } catch {
-    console.log('[CloudShell] No session to restore for', username);
+
+    const backup = JSON.parse(backupData) as BackupHandle;
+    const sandbox = getSandbox(env.Sandbox as never, getUserContainerId(username));
+
+    await sandbox.restoreBackup(backup);
+    console.log('[CloudShell] Backup restored for', username);
+
+    await env.USERS_KV.delete(`backup:${username}`);
+    return true;
+  } catch (error) {
+    console.error('[CloudShell] Failed to restore backup:', error);
+    return false;
+  }
+}
+
+async function createBackup(env: Env, username: string): Promise<boolean> {
+  try {
+    const sandbox = getSandbox(env.Sandbox as never, getUserContainerId(username));
+    const backup = await sandbox.createBackup({
+      dir: '/home/user',
+      name: `session-${username}`,
+      ttl: 604800,
+    });
+
+    await env.USERS_KV.put(`backup:${username}`, JSON.stringify(backup));
+    console.log('[CloudShell] Backup created for', username);
+    return true;
+  } catch (error) {
+    console.error('[CloudShell] Failed to create backup:', error);
+    return false;
   }
 }
 
@@ -193,18 +217,17 @@ app.get('/ws/terminal', async (c) => {
   try {
     const state = await container.getState();
     console.log('[CloudShell] Initial container state:', state.status);
-    
-    // Start if not healthy or running
+
     if (state.status === 'stopped' || state.status === 'stopped_with_code') {
       console.log('[CloudShell] Starting stopped container...');
       await container.startAndWaitForPorts({ ports: [8080] });
-      await restoreSession(container, username);
+      await restoreFromBackup(c.env, username);
     } else if (state.status === 'running') {
       // Container is already starting, wait for it
       console.log('[CloudShell] Container is starting, waiting for ports...');
       await container.waitForPort({ portToCheck: 8080 });
     }
-    
+
     console.log('[CloudShell] Container is healthy, proxying request');
   } catch (err) {
     console.error('[CloudShell] Container error:', err);
@@ -335,8 +358,13 @@ app.get('/api/tabs', async (c) => {
 
   const username = payload.sub;
   const tabs = await c.env.USERS_KV.get(`tabs:${username}`);
-  interface Tab { id: string; name: string; sessionId: string; createdAt: number }
-  return c.json({ tabs: tabs ? JSON.parse(tabs) as Tab[] : [] });
+  interface Tab {
+    id: string;
+    name: string;
+    sessionId: string;
+    createdAt: number;
+  }
+  return c.json({ tabs: tabs ? (JSON.parse(tabs) as Tab[]) : [] });
 });
 
 app.post('/api/tabs', async (c) => {
@@ -353,15 +381,25 @@ app.post('/api/tabs', async (c) => {
   }
 
   const username = payload.sub;
-  interface Tab { id: string; name: string; sessionId: string; createdAt: number }
+  interface Tab {
+    id: string;
+    name: string;
+    sessionId: string;
+    createdAt: number;
+  }
   const body = await c.req.json<{ name: string; sessionId: string }>();
-  const tab: Tab = { id: crypto.randomUUID(), name: body.name, sessionId: body.sessionId, createdAt: Date.now() };
-  
+  const tab: Tab = {
+    id: crypto.randomUUID(),
+    name: body.name,
+    sessionId: body.sessionId,
+    createdAt: Date.now(),
+  };
+
   const existing = await c.env.USERS_KV.get(`tabs:${username}`);
-  const tabs: Tab[] = existing ? JSON.parse(existing) as Tab[] : [];
+  const tabs: Tab[] = existing ? (JSON.parse(existing) as Tab[]) : [];
   tabs.push(tab);
   await c.env.USERS_KV.put(`tabs:${username}`, JSON.stringify(tabs));
-  
+
   return c.json({ tab });
 });
 
@@ -381,13 +419,16 @@ app.post('/api/share', async (c) => {
   const username = payload.sub;
   const body = await c.req.json<{ permissions?: 'read' | 'write' }>();
   const shareToken = crypto.randomUUID();
-  
-  await c.env.USERS_KV.put(`share:${shareToken}`, JSON.stringify({
-    username,
-    permissions: body.permissions || 'read',
-    createdAt: Date.now(),
-    expiresAt: Date.now() + 24 * 60 * 60 * 1000
-  }));
+
+  await c.env.USERS_KV.put(
+    `share:${shareToken}`,
+    JSON.stringify({
+      username,
+      permissions: body.permissions || 'read',
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+    })
+  );
 
   const shareUrl = `${c.req.url.replace('/api/share', '')}/view?token=${shareToken}`;
   return c.json({ shareUrl, token: shareToken });
@@ -407,9 +448,14 @@ app.get('/api/ssh-keys', async (c) => {
   }
 
   const username = payload.sub;
-  interface SSHKey { id: string; name: string; key: string; createdAt: number }
+  interface SSHKey {
+    id: string;
+    name: string;
+    key: string;
+    createdAt: number;
+  }
   const keys = await c.env.USERS_KV.get(`ssh-keys:${username}`);
-  return c.json({ keys: keys ? JSON.parse(keys) as SSHKey[] : [] });
+  return c.json({ keys: keys ? (JSON.parse(keys) as SSHKey[]) : [] });
 });
 
 app.post('/api/ssh-keys', async (c) => {
@@ -426,14 +472,19 @@ app.post('/api/ssh-keys', async (c) => {
   }
 
   const username = payload.sub;
-  interface SSHKey { id: string; name: string; key: string; createdAt: number }
+  interface SSHKey {
+    id: string;
+    name: string;
+    key: string;
+    createdAt: number;
+  }
   const body = await c.req.json<{ name: string; key: string }>();
-  
+
   const existing = await c.env.USERS_KV.get(`ssh-keys:${username}`);
-  const keys: SSHKey[] = existing ? JSON.parse(existing) as SSHKey[] : [];
+  const keys: SSHKey[] = existing ? (JSON.parse(existing) as SSHKey[]) : [];
   keys.push({ id: crypto.randomUUID(), name: body.name, key: body.key, createdAt: Date.now() });
   await c.env.USERS_KV.put(`ssh-keys:${username}`, JSON.stringify(keys));
-  
+
   return c.json({ success: true });
 });
 
@@ -469,6 +520,28 @@ app.post('/api/recording/stop', async (c) => {
   return c.json({ saved: true, stoppedAt: Date.now() });
 });
 
+app.post('/api/backup', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  const token = extractBearerToken(authHeader);
+
+  if (!token) {
+    return c.json({ error: 'Authentication required' }, 401);
+  }
+
+  const payload = await verifyJWT(token, c.env);
+  if (!payload) {
+    return c.json({ error: 'Invalid or expired token' }, 401);
+  }
+
+  const username = payload.sub;
+  const success = await createBackup(c.env, username);
+  if (success) {
+    return c.json({ success: true });
+  } else {
+    return c.json({ error: 'Backup failed' }, 500);
+  }
+});
+
 app.delete('/api/ssh-keys/:id', async (c) => {
   const authHeader = c.req.header('Authorization');
   const token = extractBearerToken(authHeader);
@@ -484,25 +557,34 @@ app.delete('/api/ssh-keys/:id', async (c) => {
 
   const username = payload.sub;
   const id = c.req.param('id');
-  interface SSHKey { id: string; name: string; key: string; createdAt: number }
-  
+  interface SSHKey {
+    id: string;
+    name: string;
+    key: string;
+    createdAt: number;
+  }
+
   const existing = await c.env.USERS_KV.get(`ssh-keys:${username}`);
-  const keys: SSHKey[] = existing ? JSON.parse(existing) as SSHKey[] : [];
+  const keys: SSHKey[] = existing ? (JSON.parse(existing) as SSHKey[]) : [];
   const filtered = keys.filter((k) => k.id !== id);
   await c.env.USERS_KV.put(`ssh-keys:${username}`, JSON.stringify(filtered));
-  
+
   return c.json({ success: true });
 });
 
 app.get('/api/share/:token', async (c) => {
   const shareToken = c.req.param('token');
   const shareData = await c.env.USERS_KV.get(`share:${shareToken}`);
-  
+
   if (!shareData) {
     return c.json({ error: 'Invalid or expired share link' }, 404);
   }
 
-  interface ShareData { username: string; permissions: string; expiresAt: number }
+  interface ShareData {
+    username: string;
+    permissions: string;
+    expiresAt: number;
+  }
   const data = JSON.parse(shareData) as ShareData;
   if (Date.now() > data.expiresAt) {
     return c.json({ error: 'Share link expired' }, 410);
@@ -526,13 +608,18 @@ app.delete('/api/tabs/:id', async (c) => {
 
   const username = payload.sub;
   const id = c.req.param('id');
-  interface Tab { id: string; name: string; sessionId: string; createdAt: number }
-  
+  interface Tab {
+    id: string;
+    name: string;
+    sessionId: string;
+    createdAt: number;
+  }
+
   const existing = await c.env.USERS_KV.get(`tabs:${username}`);
-  const tabs: Tab[] = existing ? JSON.parse(existing) as Tab[] : [];
+  const tabs: Tab[] = existing ? (JSON.parse(existing) as Tab[]) : [];
   const filtered = tabs.filter((t) => t.id !== id);
   await c.env.USERS_KV.put(`tabs:${username}`, JSON.stringify(filtered));
-  
+
   return c.json({ success: true });
 });
 
@@ -554,7 +641,7 @@ app.get('/api/files/list', async (c) => {
 
   try {
     const objects = await c.env.USER_DATA.list({ prefix });
-    const files = objects.objects.map(obj => ({
+    const files = objects.objects.map((obj) => ({
       name: obj.key.replace(prefix, ''),
       size: obj.size,
       modifiedAt: obj.uploaded.getTime(),
