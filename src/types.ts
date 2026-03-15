@@ -26,3 +26,36 @@ export interface Env {
   USERS_KV: KVNamespace;
   USER_DATA: R2Bucket;
 }
+
+export interface Session {
+  id: string;
+  tmuxSessionName: string;
+  createdAt: number;
+  lastActive: number;
+  scrollback: string[];
+  cwd: string;
+  env: Record<string, string>;
+}
+
+export interface Tab {
+  id: string;
+  sessionId: string;
+  name: string;
+  status: 'active' | 'inactive';
+  createdAt: number;
+}
+
+export interface FileMetadata {
+  name: string;
+  size: number;
+  modifiedAt: number;
+  path: string;
+}
+
+export interface ShareToken {
+  token: string;
+  permissions: 'read' | 'write';
+  expiresAt: number;
+  createdBy: string;
+  sessionId: string;
+}
