@@ -301,4 +301,109 @@ app.post('/api/container/custom', async (c) => {
   });
 });
 
+app.get('/api/files/list', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  const token = extractBearerToken(authHeader);
+
+  if (!token) {
+    return c.json({ error: 'Authentication required' }, 401);
+  }
+
+  const payload = await verifyJWT(token, c.env);
+  if (!payload) {
+    return c.json({ error: 'Invalid or expired token' }, 401);
+  }
+
+  const username = payload.sub;
+  const prefix = `user:${username}/`;
+
+  try {
+    const objects = await c.env.USER_DATA.list({ prefix });
+    const files = objects.objects.map(obj => ({
+      name: obj.key.replace(prefix, ''),
+      size: obj.size,
+      modifiedAt: obj.uploaded.getTime(),
+      path: obj.key,
+    }));
+
+    return c.json({ files });
+  } catch {
+    return c.json({ error: 'Failed to list files' }, 500);
+  }
+});
+
+app.post('/api/files/upload', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  const token = extractBearerToken(authHeader);
+
+  if (!token) {
+    return c.json({ error: 'Authentication required' }, 401);
+  }
+
+  const payload = await verifyJWT(token, c.env);
+  if (!payload) {
+    return c.json({ error: 'Invalid or expired token' }, 401);
+  }
+
+  const username = payload.sub;
+  const body = await c.req.parseBody();
+  const file = body.file;
+
+  if (!file || !(file instanceof File)) {
+    return c.json({ error: 'No file provided' }, 400);
+  }
+
+  const key = `user:${username}/${file.name}`;
+  const arrayBuffer = await file.arrayBuffer();
+
+  try {
+    await c.env.USER_DATA.put(key, arrayBuffer, {
+      httpMetadata: { contentType: file.type || 'application/octet-stream' },
+    });
+
+    return c.json({
+      success: true,
+      path: key,
+      name: file.name,
+      size: file.size,
+    });
+  } catch {
+    return c.json({ error: 'Failed to upload file' }, 500);
+  }
+});
+
+app.get('/api/files/download/:name', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  const token = extractBearerToken(authHeader);
+
+  if (!token) {
+    return c.json({ error: 'Authentication required' }, 401);
+  }
+
+  const payload = await verifyJWT(token, c.env);
+  if (!payload) {
+    return c.json({ error: 'Invalid or expired token' }, 401);
+  }
+
+  const username = payload.sub;
+  const filename = c.req.param('name');
+  const key = `user:${username}/${filename}`;
+
+  try {
+    const object = await c.env.USER_DATA.get(key);
+
+    if (!object) {
+      return c.json({ error: 'File not found' }, 404);
+    }
+
+    const headers = new Headers();
+    headers.set('Content-Type', object.httpMetadata?.contentType || 'application/octet-stream');
+    headers.set('Content-Disposition', `attachment; filename="${filename}"`);
+
+    return new Response(object.body, { headers });
+  } catch {
+    return c.json({ error: 'Failed to download file' }, 500);
+  }
+});
+
 export default app;
