@@ -50,6 +50,23 @@ class CloudShellSandbox extends Container {
   sleepAfter = '5m';
 }
 
+async function restoreSession(container: ReturnType<typeof getContainer>, username: string): Promise<void> {
+  try {
+    const response = await container.fetch(
+      new Request('http://localhost:8080/api/session/restore', {
+        method: 'POST',
+        headers: { 'X-User': username },
+      })
+    );
+    const result = await response.json() as { restored: boolean };
+    if (result.restored) {
+      console.log('[CloudShell] Session restored for', username);
+    }
+  } catch (e) {
+    console.log('[CloudShell] No session to restore for', username);
+  }
+}
+
 const app = new Hono<{ Bindings: Env }>();
 
 // Health check - must be before auth middleware
@@ -180,6 +197,7 @@ app.get('/ws/terminal', async (c) => {
     if (state.status === 'stopped' || state.status === 'stopped_with_code') {
       console.log('[CloudShell] Starting stopped container...');
       await container.startAndWaitForPorts({ ports: [8080] });
+      await restoreSession(container, username);
     } else if (state.status === 'running') {
       // Container is already starting, wait for it
       console.log('[CloudShell] Container is starting, waiting for ports...');

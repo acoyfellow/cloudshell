@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -206,6 +207,101 @@ func checkFuseMount() bool {
 	return true
 }
 
+type SessionState struct {
+	SessionName string            `json:"sessionName"`
+	Scrollback  []string          `json:"scrollback"`
+	Cwd         string            `json:"cwd"`
+	Env         map[string]string `json:"env"`
+}
+
+func saveSessionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	username := r.Header.Get("X-User")
+	if username == "" {
+		username = "default"
+	}
+
+	sessionName := r.URL.Query().Get("session")
+	if sessionName == "" {
+		sessionName = fmt.Sprintf("shell-%s", username)
+	}
+
+	scrollback := getTmuxScrollback(sessionName)
+	cwd := getTmuxCwd(sessionName)
+
+	state := SessionState{
+		SessionName: sessionName,
+		Scrollback:  scrollback,
+		Cwd:         cwd,
+		Env:         map[string]string{},
+	}
+
+	statePath := fmt.Sprintf("/home/user/.session-%s.json", sessionName)
+	data, _ := json.Marshal(state)
+	os.WriteFile(statePath, data, 0644)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"saved": true})
+}
+
+func restoreSessionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	username := r.Header.Get("X-User")
+	if username == "" {
+		username = "default"
+	}
+
+	sessionName := r.URL.Query().Get("session")
+	if sessionName == "" {
+		sessionName = fmt.Sprintf("shell-%s", username)
+	}
+
+	statePath := fmt.Sprintf("/home/user/.session-%s.json", sessionName)
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]bool{"restored": false})
+		return
+	}
+
+	var state SessionState
+	json.Unmarshal(data, &state)
+
+	restoreTmuxSession(state)
+	os.Remove(statePath)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"restored": true})
+}
+
+func getTmuxScrollback(sessionName string) []string {
+	cmd := exec.Command("tmux", "capture-pane", "-t", sessionName, "-p", "-S", "-1000")
+	output, _ := cmd.Output()
+	lines := strings.Split(string(output), "\n")
+	return lines
+}
+
+func getTmuxCwd(sessionName string) string {
+	cmd := exec.Command("tmux", "display-message", "-t", sessionName, "-p", "#{pane_current_path}")
+	output, _ := cmd.Output()
+	return strings.TrimSpace(string(output))
+}
+
+func restoreTmuxSession(state SessionState) {
+	exec.Command("tmux", "new-session", "-d", "-s", state.SessionName).Run()
+	if state.Cwd != "" {
+		exec.Command("tmux", "send-keys", "-t", state.SessionName, fmt.Sprintf("cd %s", state.Cwd), "Enter").Run()
+	}
+}
+
 func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
@@ -220,6 +316,8 @@ func main() {
 	})
 	mux.HandleFunc("/health", healthHandler)
 	mux.HandleFunc("/ws/terminal", handleWebSocket)
+	mux.HandleFunc("/api/session/save", saveSessionHandler)
+	mux.HandleFunc("/api/session/restore", restoreSessionHandler)
 
 	server := &http.Server{
 		Addr:    ":8080",
