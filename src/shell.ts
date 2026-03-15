@@ -21,7 +21,58 @@ export function html(username: string, token: string): string {
     #bar .status.connected { color: #4a4; }
     #bar .status.connecting { color: #aa4; }
     #bar .status.disconnected { color: #a44; }
-    #terminal { height: calc(100% - 28px); }
+    #main { display: flex; height: calc(100% - 28px); }
+    #terminal { flex: 1; }
+    #filePanel {
+      width: 250px;
+      background: #1a1a1a;
+      border-left: 1px solid #333;
+      display: none;
+      flex-direction: column;
+    }
+    #filePanel.visible { display: flex; }
+    #fileHeader {
+      padding: 8px 12px;
+      background: #222;
+      border-bottom: 1px solid #333;
+      font: 12px monospace;
+      color: #888;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    #fileList {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+    .fileItem {
+      padding: 6px 8px;
+      margin: 2px 0;
+      background: #252525;
+      border-radius: 3px;
+      font: 11px monospace;
+      color: #aaa;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .fileItem:hover { background: #333; }
+    .fileName { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+    .fileSize { color: #666; font-size: 10px; margin-left: 8px; }
+    #uploadZone {
+      padding: 16px;
+      margin: 8px;
+      border: 2px dashed #444;
+      border-radius: 4px;
+      text-align: center;
+      color: #666;
+      font: 11px monospace;
+      cursor: pointer;
+    }
+    #uploadZone.dragover { border-color: #4a4; background: #1a2a1a; }
+    #uploadZone:hover { border-color: #555; }
     .xterm { height: 100%; padding: 4px; }
   </style>
 </head>
@@ -29,11 +80,25 @@ export function html(username: string, token: string): string {
   <div id="bar">
     <span class="user">${username}</span>
     <span>
+      <button onclick="toggleFiles()" style="background:#333;border:1px solid #444;color:#888;cursor:pointer;padding:2px 8px;font-size:11px;border-radius:3px;margin-right:8px;">files</button>
       <span id="status" class="status disconnected">disconnected</span>
       <button onclick="logout()" style="margin-left:12px;background:#333;border:1px solid #444;color:#888;cursor:pointer;padding:2px 8px;font-size:11px;border-radius:3px;">logout</button>
     </span>
   </div>
-  <div id="terminal"></div>
+  <div id="main">
+    <div id="terminal"></div>
+    <div id="filePanel">
+      <div id="fileHeader">
+        <span>Files</span>
+        <button onclick="refreshFiles()" style="background:none;border:none;color:#666;cursor:pointer;font-size:14px;">↻</button>
+      </div>
+      <div id="uploadZone" onclick="document.getElementById('fileInput').click()">
+        Drop files here or click to upload
+        <input type="file" id="fileInput" style="display:none" multiple onchange="handleFileSelect(event)">
+      </div>
+      <div id="fileList"></div>
+    </div>
+  </div>
 
   <script src="https://unpkg.com/xterm@5.3.0/lib/xterm.js"></script>
   <script src="https://unpkg.com/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
@@ -144,6 +209,81 @@ export function html(username: string, token: string): string {
 
     window.addEventListener("resize", () => fit.fit());
     connect();
+
+    let filesVisible = false;
+
+    function toggleFiles() {
+      filesVisible = !filesVisible;
+      document.getElementById('filePanel').classList.toggle('visible', filesVisible);
+      if (filesVisible) refreshFiles();
+    }
+
+    async function refreshFiles() {
+      try {
+        const res = await fetch('/api/files/list', { headers: { 'Authorization': 'Bearer ' + TOKEN } });
+        const data = await res.json();
+        const list = document.getElementById('fileList');
+        list.innerHTML = '';
+        if (data.files) {
+          data.files.forEach(f => {
+            const div = document.createElement('div');
+            div.className = 'fileItem';
+            div.innerHTML = '<span class="fileName">' + f.name + '</span><span class="fileSize">' + formatBytes(f.size) + '</span>';
+            div.onclick = () => downloadFile(f.name);
+            list.appendChild(div);
+          });
+        }
+      } catch (e) {
+        console.error('Failed to load files', e);
+      }
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    async function downloadFile(name) {
+      window.open('/api/files/download/' + encodeURIComponent(name) + '?token=' + encodeURIComponent(TOKEN));
+    }
+
+    async function handleFileSelect(e) {
+      const files = e.target.files;
+      if (!files.length) return;
+      for (const file of files) {
+        await uploadFile(file);
+      }
+      refreshFiles();
+    }
+
+    async function uploadFile(file) {
+      const form = new FormData();
+      form.append('file', file);
+      try {
+        await fetch('/api/files/upload', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + TOKEN },
+          body: form
+        });
+      } catch (e) {
+        console.error('Upload failed', e);
+      }
+    }
+
+    const uploadZone = document.getElementById('uploadZone');
+    uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+    uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+    uploadZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadZone.classList.remove('dragover');
+      if (e.dataTransfer.files) {
+        for (const file of e.dataTransfer.files) uploadFile(file);
+        setTimeout(refreshFiles, 500);
+      }
+    });
   </script>
 </body>
 </html>`;
