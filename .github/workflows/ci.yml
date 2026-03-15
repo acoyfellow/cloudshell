@@ -65,7 +65,7 @@ jobs:
         run: npm ci --legacy-peer-deps
 
       - name: Run unit tests
-        run: npm run test:unit -- --coverage
+        run: npm run test -- --coverage
 
       - name: Upload coverage
         uses: actions/upload-artifact@v4
