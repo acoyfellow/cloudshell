@@ -319,6 +319,183 @@ app.post('/api/container/custom', async (c) => {
   });
 });
 
+app.get('/api/tabs', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  const token = extractBearerToken(authHeader);
+
+  if (!token) {
+    return c.json({ error: 'Authentication required' }, 401);
+  }
+
+  const payload = await verifyJWT(token, c.env);
+  if (!payload) {
+    return c.json({ error: 'Invalid or expired token' }, 401);
+  }
+
+  const username = payload.sub;
+  const tabs = await c.env.USERS_KV.get(`tabs:${username}`);
+  return c.json({ tabs: tabs ? JSON.parse(tabs) : [] });
+});
+
+app.post('/api/tabs', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  const token = extractBearerToken(authHeader);
+
+  if (!token) {
+    return c.json({ error: 'Authentication required' }, 401);
+  }
+
+  const payload = await verifyJWT(token, c.env);
+  if (!payload) {
+    return c.json({ error: 'Invalid or expired token' }, 401);
+  }
+
+  const username = payload.sub;
+  const body = await c.req.json<{ name: string; sessionId: string }>();
+  const tab = { id: crypto.randomUUID(), name: body.name, sessionId: body.sessionId, createdAt: Date.now() };
+  
+  const existing = await c.env.USERS_KV.get(`tabs:${username}`);
+  const tabs = existing ? JSON.parse(existing) : [];
+  tabs.push(tab);
+  await c.env.USERS_KV.put(`tabs:${username}`, JSON.stringify(tabs));
+  
+  return c.json({ tab });
+});
+
+app.post('/api/share', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  const token = extractBearerToken(authHeader);
+
+  if (!token) {
+    return c.json({ error: 'Authentication required' }, 401);
+  }
+
+  const payload = await verifyJWT(token, c.env);
+  if (!payload) {
+    return c.json({ error: 'Invalid or expired token' }, 401);
+  }
+
+  const username = payload.sub;
+  const body = await c.req.json<{ permissions?: 'read' | 'write' }>();
+  const shareToken = crypto.randomUUID();
+  
+  await c.env.USERS_KV.put(`share:${shareToken}`, JSON.stringify({
+    username,
+    permissions: body.permissions || 'read',
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 24 * 60 * 60 * 1000
+  }));
+
+  const shareUrl = `${c.req.url.replace('/api/share', '')}/view?token=${shareToken}`;
+  return c.json({ shareUrl, token: shareToken });
+});
+
+app.get('/api/ssh-keys', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  const token = extractBearerToken(authHeader);
+
+  if (!token) {
+    return c.json({ error: 'Authentication required' }, 401);
+  }
+
+  const payload = await verifyJWT(token, c.env);
+  if (!payload) {
+    return c.json({ error: 'Invalid or expired token' }, 401);
+  }
+
+  const username = payload.sub;
+  const keys = await c.env.USERS_KV.get(`ssh-keys:${username}`);
+  return c.json({ keys: keys ? JSON.parse(keys) : [] });
+});
+
+app.post('/api/ssh-keys', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  const token = extractBearerToken(authHeader);
+
+  if (!token) {
+    return c.json({ error: 'Authentication required' }, 401);
+  }
+
+  const payload = await verifyJWT(token, c.env);
+  if (!payload) {
+    return c.json({ error: 'Invalid or expired token' }, 401);
+  }
+
+  const username = payload.sub;
+  const body = await c.req.json<{ name: string; key: string }>();
+  
+  const existing = await c.env.USERS_KV.get(`ssh-keys:${username}`);
+  const keys = existing ? JSON.parse(existing) : [];
+  keys.push({ id: crypto.randomUUID(), name: body.name, key: body.key, createdAt: Date.now() });
+  await c.env.USERS_KV.put(`ssh-keys:${username}`, JSON.stringify(keys));
+  
+  return c.json({ success: true });
+});
+
+app.delete('/api/ssh-keys/:id', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  const token = extractBearerToken(authHeader);
+
+  if (!token) {
+    return c.json({ error: 'Authentication required' }, 401);
+  }
+
+  const payload = await verifyJWT(token, c.env);
+  if (!payload) {
+    return c.json({ error: 'Invalid or expired token' }, 401);
+  }
+
+  const username = payload.sub;
+  const id = c.req.param('id');
+  
+  const existing = await c.env.USERS_KV.get(`ssh-keys:${username}`);
+  const keys = existing ? JSON.parse(existing) : [];
+  const filtered = keys.filter((k: { id: string }) => k.id !== id);
+  await c.env.USERS_KV.put(`ssh-keys:${username}`, JSON.stringify(filtered));
+  
+  return c.json({ success: true });
+});
+
+app.get('/api/share/:token', async (c) => {
+  const shareToken = c.req.param('token');
+  const shareData = await c.env.USERS_KV.get(`share:${shareToken}`);
+  
+  if (!shareData) {
+    return c.json({ error: 'Invalid or expired share link' }, 404);
+  }
+
+  const data = JSON.parse(shareData);
+  if (Date.now() > data.expiresAt) {
+    return c.json({ error: 'Share link expired' }, 410);
+  }
+
+  return c.json({ username: data.username, permissions: data.permissions });
+});
+
+app.delete('/api/tabs/:id', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  const token = extractBearerToken(authHeader);
+
+  if (!token) {
+    return c.json({ error: 'Authentication required' }, 401);
+  }
+
+  const payload = await verifyJWT(token, c.env);
+  if (!payload) {
+    return c.json({ error: 'Invalid or expired token' }, 401);
+  }
+
+  const username = payload.sub;
+  const id = c.req.param('id');
+  
+  const existing = await c.env.USERS_KV.get(`tabs:${username}`);
+  const tabs = existing ? JSON.parse(existing) : [];
+  const filtered = tabs.filter((t: { id: string }) => t.id !== id);
+  await c.env.USERS_KV.put(`tabs:${username}`, JSON.stringify(filtered));
+  
+  return c.json({ success: true });
+});
+
 app.get('/api/files/list', async (c) => {
   const authHeader = c.req.header('Authorization');
   const token = extractBearerToken(authHeader);

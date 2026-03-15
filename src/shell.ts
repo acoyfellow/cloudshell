@@ -81,6 +81,16 @@ export function html(username: string, token: string): string {
     }
     #uploadZone.dragover { border-color: #4a4; background: #1a2a1a; }
     #uploadZone:hover { border-color: #555; }
+    #portPanel { width: 250px; background: #1a1a1a; border-left: 1px solid #333; display: none; flex-direction: column; }
+    #portPanel.visible { display: flex; }
+    #portHeader { padding: 8px 12px; background: #222; border-bottom: 1px solid #333; font: 12px monospace; color: #888; }
+    #portInput { display: flex; padding: 8px; gap: 4px; }
+    #portInput input { flex: 1; background: #0a0a0a; border: 1px solid #333; color: #ccc; font: 11px monospace; padding: 4px; }
+    #portInput button { background: #2a2a2a; border: 1px solid #333; color: #888; font: 11px monospace; padding: 4px 8px; cursor: pointer; }
+    #portList { flex: 1; overflow-y: auto; padding: 8px; }
+    .portItem { padding: 6px 8px; margin: 2px 0; background: #252525; border-radius: 3px; font: 11px monospace; }
+    .portNumber { color: #4a4; }
+    .portUrl { color: #666; font-size: 10px; }
     .xterm { height: 100%; padding: 4px; }
   </style>
 </head>
@@ -89,6 +99,7 @@ export function html(username: string, token: string): string {
     <span class="user">${username}</span>
     <span>
       <button onclick="toggleFiles()" style="background:#333;border:1px solid #444;color:#888;cursor:pointer;padding:2px 8px;font-size:11px;border-radius:3px;margin-right:8px;">files</button>
+      <button onclick="togglePorts()" style="background:#333;border:1px solid #444;color:#888;cursor:pointer;padding:2px 8px;font-size:11px;border-radius:3px;margin-right:8px;">ports</button>
       <span id="status" class="status disconnected">disconnected</span>
       <button onclick="logout()" style="margin-left:12px;background:#333;border:1px solid #444;color:#888;cursor:pointer;padding:2px 8px;font-size:11px;border-radius:3px;">logout</button>
     </span>
@@ -109,6 +120,14 @@ export function html(username: string, token: string): string {
         <input type="file" id="fileInput" style="display:none" multiple onchange="handleFileSelect(event)">
       </div>
       <div id="fileList"></div>
+    </div>
+    <div id="portPanel">
+      <div id="portHeader">Port Forwarding</div>
+      <div id="portInput">
+        <input type="number" id="portNumber" placeholder="Port (1024-65535)" min="1024" max="65535">
+        <button onclick="addPort()">Add</button>
+      </div>
+      <div id="portList"></div>
     </div>
   </div>
 
@@ -323,6 +342,48 @@ export function html(username: string, token: string): string {
       } catch (e) {
         console.error('Upload failed', e);
       }
+    }
+
+    let portsVisible = false;
+    let forwardedPorts: { port: number; url: string }[] = [];
+
+    function togglePorts() {
+      portsVisible = !portsVisible;
+      document.getElementById('portPanel').classList.toggle('visible', portsVisible);
+      if (portsVisible) renderPorts();
+    }
+
+    async function addPort() {
+      const input = document.getElementById('portNumber') as HTMLInputElement;
+      const port = parseInt(input.value);
+      if (!port || port < 1024 || port > 65535) return;
+
+      try {
+        const res = await fetch('/api/ports/forward', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ port })
+        });
+        const data = await res.json();
+        if (data.url) {
+          forwardedPorts.push({ port, url: data.url });
+          renderPorts();
+          input.value = '';
+        }
+      } catch (e) {
+        console.error('Failed to forward port', e);
+      }
+    }
+
+    function renderPorts() {
+      const list = document.getElementById('portList');
+      list.innerHTML = '';
+      forwardedPorts.forEach(p => {
+        const div = document.createElement('div');
+        div.className = 'portItem';
+        div.innerHTML = '<span class="portNumber">:' + p.port + '</span><div class="portUrl">' + p.url + '</div>';
+        list.appendChild(div);
+      });
     }
 
     const uploadZone = document.getElementById('uploadZone');
