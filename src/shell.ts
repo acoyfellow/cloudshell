@@ -100,6 +100,7 @@ export function html(username: string, token: string): string {
     <span>
       <button onclick="toggleFiles()" style="background:#333;border:1px solid #444;color:#888;cursor:pointer;padding:2px 8px;font-size:11px;border-radius:3px;margin-right:8px;">files</button>
       <button onclick="togglePorts()" style="background:#333;border:1px solid #444;color:#888;cursor:pointer;padding:2px 8px;font-size:11px;border-radius:3px;margin-right:8px;">ports</button>
+      <button onclick="toggleRecord()" id="recordBtn" style="background:#333;border:1px solid #444;color:#888;cursor:pointer;padding:2px 8px;font-size:11px;border-radius:3px;margin-right:8px;">record</button>
       <span id="status" class="status disconnected">disconnected</span>
       <button onclick="logout()" style="margin-left:12px;background:#333;border:1px solid #444;color:#888;cursor:pointer;padding:2px 8px;font-size:11px;border-radius:3px;">logout</button>
     </span>
@@ -346,6 +347,8 @@ export function html(username: string, token: string): string {
 
     let portsVisible = false;
     let forwardedPorts: { port: number; url: string }[] = [];
+    let recording = false;
+    let terminalOutput: string[] = [];
 
     function togglePorts() {
       portsVisible = !portsVisible;
@@ -384,6 +387,30 @@ export function html(username: string, token: string): string {
         div.innerHTML = '<span class="portNumber">:' + p.port + '</span><div class="portUrl">' + p.url + '</div>';
         list.appendChild(div);
       });
+    }
+
+    async function toggleRecord() {
+      const btn = document.getElementById('recordBtn');
+      if (!recording) {
+        recording = true;
+        terminalOutput = [];
+        btn.style.color = '#a44';
+        btn.textContent = 'stop';
+        term.onData((data) => {
+          if (recording) terminalOutput.push(data);
+        });
+      } else {
+        recording = false;
+        btn.style.color = '#888';
+        btn.textContent = 'record';
+        const blob = new Blob([terminalOutput.join('')], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'recording-' + Date.now() + '.txt';
+        a.click();
+        URL.revokeObjectURL(url);
+      }
     }
 
     const uploadZone = document.getElementById('uploadZone');

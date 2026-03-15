@@ -432,6 +432,38 @@ app.post('/api/ssh-keys', async (c) => {
   return c.json({ success: true });
 });
 
+app.post('/api/recording/start', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  const token = extractBearerToken(authHeader);
+
+  if (!token) {
+    return c.json({ error: 'Authentication required' }, 401);
+  }
+
+  const payload = await verifyJWT(token, c.env);
+  if (!payload) {
+    return c.json({ error: 'Invalid or expired token' }, 401);
+  }
+
+  return c.json({ recording: true, startedAt: Date.now() });
+});
+
+app.post('/api/recording/stop', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  const token = extractBearerToken(authHeader);
+
+  if (!token) {
+    return c.json({ error: 'Authentication required' }, 401);
+  }
+
+  const payload = await verifyJWT(token, c.env);
+  if (!payload) {
+    return c.json({ error: 'Invalid or expired token' }, 401);
+  }
+
+  return c.json({ saved: true, stoppedAt: Date.now() });
+});
+
 app.delete('/api/ssh-keys/:id', async (c) => {
   const authHeader = c.req.header('Authorization');
   const token = extractBearerToken(authHeader);

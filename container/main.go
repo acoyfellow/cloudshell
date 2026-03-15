@@ -214,6 +214,18 @@ type SessionState struct {
 	Env         map[string]string `json:"env"`
 }
 
+type Recording struct {
+	StartTime int64   `json:"startTime"`
+	Events    []Event `json:"events"`
+}
+
+type Event struct {
+	Timestamp int64  `json:"timestamp"`
+	Data      string `json:"data"`
+}
+
+var activeRecordings = make(map[string]*Recording)
+
 func saveSessionHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -302,6 +314,75 @@ func restoreTmuxSession(state SessionState) {
 	}
 }
 
+func startRecordingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	sessionName := r.URL.Query().Get("session")
+	if sessionName == "" {
+		sessionName = "main"
+	}
+
+	activeRecordings[sessionName] = &Recording{
+		StartTime: time.Now().Unix(),
+		Events:    []Event{},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"recording": true})
+}
+
+func stopRecordingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	sessionName := r.URL.Query().Get("session")
+	if sessionName == "" {
+		sessionName = "main"
+	}
+
+	recording, exists := activeRecordings[sessionName]
+	if !exists {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]bool{"saved": false})
+		return
+	}
+
+	statePath := fmt.Sprintf("/home/user/.recording-%s.json", sessionName)
+	data, _ := json.Marshal(recording)
+	os.WriteFile(statePath, data, 0644)
+	delete(activeRecordings, sessionName)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"saved": true})
+}
+
+func getRecordingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	sessionName := r.URL.Query().Get("session")
+	if sessionName == "" {
+		sessionName = "main"
+	}
+
+	statePath := fmt.Sprintf("/home/user/.recording-%s.json", sessionName)
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+}
+
 func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
@@ -318,6 +399,9 @@ func main() {
 	mux.HandleFunc("/ws/terminal", handleWebSocket)
 	mux.HandleFunc("/api/session/save", saveSessionHandler)
 	mux.HandleFunc("/api/session/restore", restoreSessionHandler)
+	mux.HandleFunc("/api/recording/start", startRecordingHandler)
+	mux.HandleFunc("/api/recording/stop", stopRecordingHandler)
+	mux.HandleFunc("/api/recording/get", getRecordingHandler)
 
 	server := &http.Server{
 		Addr:    ":8080",
