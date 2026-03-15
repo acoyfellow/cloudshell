@@ -21,7 +21,15 @@ export function html(username: string, token: string): string {
     #bar .status.connected { color: #4a4; }
     #bar .status.connecting { color: #aa4; }
     #bar .status.disconnected { color: #a44; }
-    #main { display: flex; height: calc(100% - 28px); }
+    #tabs { height: 28px; background: #151515; border-bottom: 1px solid #222; display: flex; align-items: center; padding: 0 8px; }
+    .tab { padding: 4px 12px; margin-right: 4px; background: #222; color: #888; font: 11px monospace; border-radius: 3px 3px 0 0; cursor: pointer; display: flex; align-items: center; }
+    .tab.active { background: #333; color: #ccc; }
+    .tab:hover { background: #2a2a2a; }
+    .tab-close { margin-left: 8px; color: #666; font-size: 14px; line-height: 1; }
+    .tab-close:hover { color: #a44; }
+    #newTab { padding: 2px 8px; background: #1a1a1a; color: #666; font: 14px monospace; border: 1px solid #333; border-radius: 3px; cursor: pointer; }
+    #newTab:hover { background: #252525; color: #888; }
+    #main { display: flex; height: calc(100% - 56px); }
     #terminal { flex: 1; }
     #filePanel {
       width: 250px;
@@ -85,6 +93,10 @@ export function html(username: string, token: string): string {
       <button onclick="logout()" style="margin-left:12px;background:#333;border:1px solid #444;color:#888;cursor:pointer;padding:2px 8px;font-size:11px;border-radius:3px;">logout</button>
     </span>
   </div>
+  <div id="tabs">
+    <div id="tabList" style="display:flex;flex:1;"></div>
+    <button id="newTab" onclick="createNewTab()">+</button>
+  </div>
   <div id="main">
     <div id="terminal"></div>
     <div id="filePanel">
@@ -134,7 +146,47 @@ export function html(username: string, token: string): string {
     let reconnectDelay = 500;
 
     const TOKEN = ${JSON.stringify(token)};
-    
+
+    let tabs = [{id: 'tab-1', name: 'shell', active: true, session: 'main'}];
+    let currentTab = 'tab-1';
+
+    function renderTabs() {
+      const list = document.getElementById('tabList');
+      list.innerHTML = '';
+      tabs.forEach(tab => {
+        const div = document.createElement('div');
+        div.className = 'tab' + (tab.active ? ' active' : '');
+        div.innerHTML = '<span>' + tab.name + '</span>' + (tabs.length > 1 ? '<span class="tab-close" onclick="event.stopPropagation();closeTab(\'' + tab.id + '\')">×</span>' : '');
+        div.onclick = () => switchTab(tab.id);
+        list.appendChild(div);
+      });
+    }
+
+    function createNewTab() {
+      const id = 'tab-' + Date.now();
+      const name = 'shell-' + tabs.length;
+      tabs.push({id, name, active: false, session: id});
+      renderTabs();
+      switchTab(id);
+    }
+
+    function switchTab(id) {
+      tabs.forEach(t => t.active = (t.id === id));
+      currentTab = id;
+      renderTabs();
+    }
+
+    function closeTab(id) {
+      if (tabs.length <= 1) return;
+      const idx = tabs.findIndex(t => t.id === id);
+      tabs = tabs.filter(t => t.id !== id);
+      if (currentTab === id && tabs.length > 0) {
+        switchTab(tabs[Math.min(idx, tabs.length - 1)].id);
+      } else {
+        renderTabs();
+      }
+    }
+
     function logout() {
       window.location.href = '/login';
     }function connect() {
@@ -284,6 +336,8 @@ export function html(username: string, token: string): string {
         setTimeout(refreshFiles, 500);
       }
     });
+
+    renderTabs();
   </script>
 </body>
 </html>`;
