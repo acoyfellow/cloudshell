@@ -29,14 +29,19 @@ export function html(username: string, token: string): string {
     .tab-close:hover { color: #a44; }
     #newTab { padding: 2px 8px; background: #1a1a1a; color: #666; font: 14px monospace; border: 1px solid #333; border-radius: 3px; cursor: pointer; }
     #newTab:hover { background: #252525; color: #888; }
-    #main { display: flex; height: calc(100% - 56px); }
-    #terminal { flex: 1; }
+    #main { position: relative; height: calc(100% - 56px); width: 100%; }
+    #terminal { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
     #filePanel {
+      position: absolute;
+      top: 56px;
+      right: 0;
+      bottom: 0;
       width: 250px;
       background: #1a1a1a;
       border-left: 1px solid #333;
       display: none;
       flex-direction: column;
+      z-index: 10;
     }
     #filePanel.visible { display: flex; }
     #fileHeader {
@@ -81,7 +86,7 @@ export function html(username: string, token: string): string {
     }
     #uploadZone.dragover { border-color: #4a4; background: #1a2a1a; }
     #uploadZone:hover { border-color: #555; }
-    #portPanel { width: 250px; background: #1a1a1a; border-left: 1px solid #333; display: none; flex-direction: column; }
+    #portPanel { position: absolute; top: 56px; right: 0; bottom: 0; width: 250px; background: #1a1a1a; border-left: 1px solid #333; display: none; flex-direction: column; z-index: 10; }
     #portPanel.visible { display: flex; }
     #portHeader { padding: 8px 12px; background: #222; border-bottom: 1px solid #333; font: 12px monospace; color: #888; }
     #portInput { display: flex; padding: 8px; gap: 4px; }
@@ -111,25 +116,25 @@ export function html(username: string, token: string): string {
   </div>
   <div id="main">
     <div id="terminal"></div>
-    <div id="filePanel">
-      <div id="fileHeader">
-        <span>Files</span>
-        <button onclick="refreshFiles()" style="background:none;border:none;color:#666;cursor:pointer;font-size:14px;">↻</button>
-      </div>
-      <div id="uploadZone" onclick="document.getElementById('fileInput').click()">
-        Drop files here or click to upload
-        <input type="file" id="fileInput" style="display:none" multiple onchange="handleFileSelect(event)">
-      </div>
-      <div id="fileList"></div>
+  </div>
+  <div id="filePanel">
+    <div id="fileHeader">
+      <span>Files</span>
+      <button onclick="refreshFiles()" style="background:none;border:none;color:#666;cursor:pointer;font-size:14px;">↻</button>
     </div>
-    <div id="portPanel">
-      <div id="portHeader">Port Forwarding</div>
-      <div id="portInput">
-        <input type="number" id="portNumber" placeholder="Port (1024-65535)" min="1024" max="65535">
-        <button onclick="addPort()">Add</button>
-      </div>
-      <div id="portList"></div>
+    <div id="uploadZone" onclick="document.getElementById('fileInput').click()">
+      Drop files here or click to upload
+      <input type="file" id="fileInput" style="display:none" multiple onchange="handleFileSelect(event)">
     </div>
+    <div id="fileList"></div>
+  </div>
+  <div id="portPanel">
+    <div id="portHeader">Port Forwarding</div>
+    <div id="portInput">
+      <input type="number" id="portNumber" placeholder="Port (1024-65535)" min="1024" max="65535">
+      <button onclick="addPort()">Add</button>
+    </div>
+    <div id="portList"></div>
   </div>
 
   <script src="https://unpkg.com/xterm@5.3.0/lib/xterm.js"></script>
