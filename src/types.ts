@@ -25,16 +25,14 @@ export interface Env {
   Sandbox: DurableObjectNamespace<Container>;
   USERS_KV: KVNamespace;
   USER_DATA: R2Bucket;
+  BACKUP_BUCKET: R2Bucket;
 }
 
-export interface Session {
+export interface BackupHandle {
   id: string;
-  tmuxSessionName: string;
-  createdAt: number;
-  lastActive: number;
-  scrollback: string[];
-  cwd: string;
-  env: Record<string, string>;
+  dir: string;
+  name?: string;
+  createdAt?: number;
 }
 
 export interface Tab {

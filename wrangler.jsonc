@@ -16,6 +16,10 @@
     {
       "binding": "USER_DATA",
       "bucket_name": "cloudshell-user-data"
+    },
+    {
+      "binding": "BACKUP_BUCKET",
+      "bucket_name": "cloudshell-backups"
     }
   ],
   "kv_namespaces": [
