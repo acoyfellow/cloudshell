@@ -1,0 +1,48 @@
+{
+  "name": "cloudshell",
+  "account_id": "bfcb6ac5b3ceaf42a09607f6f7925823",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-10-13",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "containers": [
+    {
+      "max_instances": 5,
+      "class_name": "CloudShellTerminal",
+      "image": "./Dockerfile"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "USER_DATA",
+      "bucket_name": "cloudshell-user-data"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "USERS_KV",
+      "id": "7f68572581e14065b12070267338044b"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "Sandbox",
+        "class_name": "CloudShellTerminal"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v6",
+      "new_sqlite_classes": ["CloudShellTerminal"]
+    }
+  ],
+  "vars": {
+    "R2_BUCKET_NAME": "cloudshell-user-data",
+    "R2_ACCOUNT_ID": "bfcb6ac5b3ceaf42a09607f6f7925823"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
