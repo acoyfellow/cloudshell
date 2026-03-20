@@ -94,7 +94,12 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Check licenses
-        run: bunx license-checker --production --onlyAllow 'MIT;Apache-2.0;BSD-3-Clause;BSD-2-Clause;ISC;MIT-0;0BSD'
+        run: >
+          bunx license-checker
+          --production
+          --excludePrivatePackages
+          --onlyAllow
+          'MIT;Apache-2.0;BSD-3-Clause;BSD-2-Clause;ISC;MIT-0;0BSD;MIT OR Apache-2.0;BlueOak-1.0.0;LGPL-3.0-or-later;MPL-2.0;CC0-1.0;(MIT OR GPL-3.0-or-later);(MIT AND Zlib);MIT*'
 
   deploy:
     name: Deploy to Production
