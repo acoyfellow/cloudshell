@@ -37,6 +37,7 @@ export class WorkspaceController {
   activeSessionId = $state('');
   activeTabId = $state('');
   terminalStatus = $state<TerminalStatus>('disconnected');
+  terminalError = $state('');
   utilityPaneOpen = $state(false);
   utilityPaneTab = $state<UtilityPaneTab>('files');
   shareLink = $state('');
@@ -507,8 +508,9 @@ export class WorkspaceController {
     this.utilityPaneOpen = false;
   }
 
-  setTerminalStatus(status: TerminalStatus) {
+  setTerminalStatus(status: TerminalStatus, errorMessage = '') {
     this.terminalStatus = status;
+    this.terminalError = status === 'disconnected' ? errorMessage : '';
   }
 
   startRecording() {

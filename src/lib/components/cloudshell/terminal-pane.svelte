@@ -1,6 +1,7 @@
 <script lang="ts">
   import { browser } from '$app/environment';
   import { onMount } from 'svelte';
+  import AlertCircle from '@lucide/svelte/icons/alert-circle';
   import '@xterm/xterm/css/xterm.css';
   import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '$lib/components/ui/empty';
   import { Spinner } from '$lib/components/ui/spinner';
@@ -172,18 +173,19 @@
       };
       nextSocket.onerror = () => {
         if (sequence === reconnectSequence) {
-          controller.setTerminalStatus('disconnected');
+          controller.setTerminalStatus('disconnected', 'Unable to reach the terminal runtime.');
         }
       };
       nextSocket.onclose = () => {
         if (sequence === reconnectSequence) {
-          controller.setTerminalStatus('disconnected');
+          controller.setTerminalStatus('disconnected', 'Terminal connection closed.');
         }
       };
     } catch (error) {
+      const message = (error as Error).message || 'Unable to create terminal connection';
       if (sequence === reconnectSequence) {
-        controller.setTerminalStatus('disconnected');
-        terminal.writeln(`\r\n[terminal unavailable] ${(error as Error).message}`);
+        controller.setTerminalStatus('disconnected', message);
+        terminal.writeln(`\r\n[terminal unavailable] ${message}`);
       }
     }
   }
@@ -286,6 +288,33 @@
       bind:this={terminalElement}
       class="absolute inset-0 min-h-0 min-w-0 overflow-hidden px-2 py-2 sm:px-3 sm:py-3"
     ></div>
+
+    {#if controller.terminalStatus !== 'connected'}
+      <div
+        class="bg-background/80 absolute inset-0 z-10 flex items-center justify-center backdrop-blur-[1px]"
+        aria-live="polite"
+      >
+        <div class="bg-card flex max-w-xs flex-col items-center gap-3 rounded-md border px-4 py-4 text-center shadow-none">
+          {#if controller.terminalStatus === 'connecting'}
+            <Spinner />
+            <div class="space-y-1">
+              <div class="text-sm font-medium">Attaching terminal</div>
+              <p class="text-muted-foreground text-sm">
+                Starting the active shell and restoring its session state.
+              </p>
+            </div>
+          {:else}
+            <AlertCircle class="text-destructive size-5" />
+            <div class="space-y-1">
+              <div class="text-sm font-medium">Terminal unavailable</div>
+              <p class="text-muted-foreground text-sm">
+                {controller.terminalError || 'The terminal could not connect.'}
+              </p>
+            </div>
+          {/if}
+        </div>
+      </div>
+    {/if}
   </div>
 {:else}
   <Empty class="bg-card h-full rounded-lg border">
