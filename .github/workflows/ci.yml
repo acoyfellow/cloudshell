@@ -119,6 +119,7 @@ jobs:
 
       - name: Deploy to Cloudflare
         env:
+          ALCHEMY_CI_STATE_STORE_CHECK: 'false'
           ALCHEMY_PASSWORD: ${{ secrets.ALCHEMY_PASSWORD }}
           BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
           TERMINAL_TICKET_SECRET: ${{ secrets.TERMINAL_TICKET_SECRET }}
