@@ -1,0 +1,52 @@
+{
+  "name": "cloudshell",
+  "version": "0.0.1",
+  "description": "Your personal VM on Cloudflare. Login, get a terminal, that's it.",
+  "license": "MIT",
+  "author": "CloudShell Contributors",
+  "homepage": "https://github.com/acoyfellow/cloudshell#readme",
+  "bugs": {
+    "url": "https://github.com/acoyfellow/cloudshell/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/acoyfellow/cloudshell.git"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "0.1.1",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
+    "effect": "^3.21.0",
+    "hono": "4.12.8"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.13.0",
+    "@cloudflare/workers-types": "4.20260316.1",
+    "@eslint/js": "10.0.1",
+    "@types/node": "25.5.0",
+    "@typescript-eslint/eslint-plugin": "8.57.0",
+    "@typescript-eslint/parser": "8.57.0",
+    "@vitest/coverage-v8": "4.1.0",
+    "eslint": "10.0.3",
+    "prettier": "3.8.1",
+    "typescript": "5.9.3",
+    "vitest": "4.1.0",
+    "wrangler": "4.73.0"
+  }
+}
