@@ -1,5 +1,5 @@
 diff --git a/lib/cloudflare/api.js b/lib/cloudflare/api.js
-index a5efe2bc3d3c348bebe4f41716cc5fad0ebd9f4e..6a95e28e68b75903196a4af5853e9221c45166d6 100644
+index a5efe2bc3d3c348bebe4f41716cc5fad0ebd9f4e..9c697058ae2ebc3f8a2e1664e01f04f934e95670 100644
 --- a/lib/cloudflare/api.js
 +++ b/lib/cloudflare/api.js
 @@ -117,7 +117,10 @@ export class CloudflareApi {
@@ -14,6 +14,20 @@ index a5efe2bc3d3c348bebe4f41716cc5fad0ebd9f4e..6a95e28e68b75903196a4af5853e9221
          }
          headers = {
              ...(await CloudflareAuth.formatHeadersWithRefresh({
+diff --git a/lib/cloudflare/container.js b/lib/cloudflare/container.js
+index 50145d45464e3023d4d0d8c5d7ebcbf880025dea..af9019c45629b5b871c517634e44de24417c03e8 100644
+--- a/lib/cloudflare/container.js
++++ b/lib/cloudflare/container.js
+@@ -178,9 +178,6 @@ export const ContainerApplication = Resource("cloudflare::ContainerApplication",
+             logs: {
+                 enabled: true,
+             },
+-            logging: {
+-                enabled: true,
+-            },
+         },
+     };
+     if (this.phase === "update" && this.output?.id) {
 diff --git a/src/cloudflare/api.ts b/src/cloudflare/api.ts
 index fa78645b8413d2e8751a24453bf9b81499946707..e2aecb25c1735aac0502798311e56a201ab31c7c 100644
 --- a/src/cloudflare/api.ts
@@ -30,3 +44,17 @@ index fa78645b8413d2e8751a24453bf9b81499946707..e2aecb25c1735aac0502798311e56a20
      }
      headers = {
        ...(await CloudflareAuth.formatHeadersWithRefresh({
+diff --git a/src/cloudflare/container.ts b/src/cloudflare/container.ts
+index 5418e58ed7c22e356b1b53a3aec306e9f6c66274..f1fe4b6e75e96a6db018bcc3ad7bee1b1a479361 100644
+--- a/src/cloudflare/container.ts
++++ b/src/cloudflare/container.ts
+@@ -562,9 +562,6 @@ export const ContainerApplication = Resource(
+         logs: {
+           enabled: true,
+         },
+-        logging: {
+-          enabled: true,
+-        },
+       },
+     };
+     if (this.phase === "update" && this.output?.id) {
