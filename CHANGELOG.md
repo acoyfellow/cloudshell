@@ -17,7 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pre-installed Dev Tools** - git, node, npm, python3, vim, nano, htop, tree, jq, tmux
 - **Port Forwarding API** - Expose services running in container via unique URLs
 - **tmux Session Persistence** - Terminal state survives disconnects
-- **Custom Dockerfile Support** - Save custom container configurations
 - **GitHub Actions CI/CD** - Automated testing and deployment
 - **Comprehensive Documentation** - Full API reference and usage examples
 

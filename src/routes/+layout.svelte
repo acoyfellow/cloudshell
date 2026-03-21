@@ -1,17 +1,12 @@
 <script lang="ts">
-  import { browser } from '$app/environment';
   import "../app.css";
-  import { authStore } from "$lib/auth-store.svelte";
+  import AuthLayoutSync from '$lib/auth-layout-sync.svelte';
   import { Toaster } from "$lib/components/ui/sonner";
 
   let { data, children } = $props();
-
-  $effect(() => {
-    if (browser) {
-      authStore.initialize(data.user, data.session);
-    }
-  });
 </script>
+
+<AuthLayoutSync user={data.user} session={data.session} />
 
 <Toaster theme="dark" richColors />
 {@render children()}

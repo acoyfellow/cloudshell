@@ -45,11 +45,11 @@ export interface SessionPort {
   createdAt: number;
 }
 
-export interface FileMetadata {
+export interface FileRecord {
   name: string;
+  path: string;
   size: number;
   modifiedAt: number;
-  path: string;
 }
 
 export interface ShareToken {

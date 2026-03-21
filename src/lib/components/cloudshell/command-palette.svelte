@@ -79,7 +79,7 @@
       <CommandSeparator />
 
       <CommandGroup heading="Panels">
-        <CommandItem onSelect={() => closeAnd(() => controller.openUtilityPane('files'))}>
+        <CommandItem onSelect={() => closeAnd(() => controller.openFilesDrawer())}>
           <FolderOpen />
           <span>Open files</span>
         </CommandItem>

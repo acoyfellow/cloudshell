@@ -1,7 +1,8 @@
 import { browser } from '$app/environment';
 import { toast } from 'svelte-sonner';
 import type {
-  FileMetadata,
+  FileRecord,
+  FileTreeNode,
   Session,
   SessionPort,
   ShareLookup,
@@ -9,10 +10,21 @@ import type {
   Tab,
 } from './types';
 
-export type UtilityPaneTab = 'files' | 'ports' | 'tools';
+export type UtilityPaneTab = 'ports' | 'tools';
 export type TerminalStatus = 'connecting' | 'connected' | 'disconnected';
 
 const ACTIVE_SESSION_KEY = 'cloudshell.activeSessionId';
+
+interface FileBreadcrumb {
+  label: string;
+  path: string;
+}
+
+interface FolderTreeItem {
+  name: string;
+  path: string;
+  depth: number;
+}
 
 function parseShareToken(input: string): string | null {
   const trimmed = input.trim();
@@ -28,22 +40,149 @@ function parseShareToken(input: string): string | null {
   }
 }
 
+function normalizeFolderPath(input: string): string {
+  const trimmed = input.trim().replace(/^\/+|\/+$/g, '');
+  if (!trimmed) {
+    return '';
+  }
+
+  return trimmed
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter((segment) => segment && segment !== '.' && segment !== '..')
+    .join('/');
+}
+
+function joinFolderPath(basePath: string, childName: string): string {
+  const base = normalizeFolderPath(basePath);
+  const child = normalizeFolderPath(childName);
+  if (!base) {
+    return child;
+  }
+
+  if (!child) {
+    return base;
+  }
+
+  return `${base}/${child}`;
+}
+
+function sortTree(nodes: FileTreeNode[]): FileTreeNode[] {
+  nodes.sort((left, right) => {
+    if (left.type !== right.type) {
+      return left.type === 'folder' ? -1 : 1;
+    }
+
+    return left.name.localeCompare(right.name, undefined, { sensitivity: 'base' });
+  });
+
+  for (const node of nodes) {
+    if (node.type === 'folder' && node.children) {
+      sortTree(node.children);
+    }
+  }
+
+  return nodes;
+}
+
+function buildFileTree(entries: FileRecord[]): FileTreeNode[] {
+  const root: FileTreeNode = { type: 'folder', name: '~', path: '', children: [] };
+  const folderMap = new Map<string, FileTreeNode>([['', root]]);
+
+  for (const entry of entries) {
+    const normalizedPath = normalizeFolderPath(entry.path);
+    if (!normalizedPath) {
+      continue;
+    }
+
+    const segments = normalizedPath.split('/');
+    let currentPath = '';
+    let parent = root;
+
+    for (const segment of segments.slice(0, -1)) {
+      currentPath = joinFolderPath(currentPath, segment);
+      let folder = folderMap.get(currentPath);
+      if (!folder) {
+        folder = { type: 'folder', name: segment, path: currentPath, children: [] };
+        parent.children ??= [];
+        parent.children.push(folder);
+        folderMap.set(currentPath, folder);
+      }
+
+      parent = folder;
+    }
+
+    parent.children ??= [];
+    parent.children.push({
+      type: 'file',
+      name: segments[segments.length - 1],
+      path: normalizedPath,
+      size: entry.size,
+      modifiedAt: entry.modifiedAt,
+    });
+  }
+
+  return sortTree(root.children ?? []);
+}
+
+function findFolderNode(nodes: FileTreeNode[], targetPath: string): FileTreeNode | null {
+  const normalizedTarget = normalizeFolderPath(targetPath);
+  if (!normalizedTarget) {
+    return { type: 'folder', name: '~', path: '', children: nodes };
+  }
+
+  for (const node of nodes) {
+    if (node.type !== 'folder') {
+      continue;
+    }
+
+    if (node.path === normalizedTarget) {
+      return node;
+    }
+
+    const nested = findFolderNode(node.children ?? [], normalizedTarget);
+    if (nested) {
+      return nested;
+    }
+  }
+
+  return null;
+}
+
+function flattenFolderTree(nodes: FileTreeNode[], depth = 0): FolderTreeItem[] {
+  const items: FolderTreeItem[] = [];
+
+  for (const node of nodes) {
+    if (node.type !== 'folder') {
+      continue;
+    }
+
+    items.push({ name: node.name, path: node.path, depth });
+    items.push(...flattenFolderTree(node.children ?? [], depth + 1));
+  }
+
+  return items;
+}
+
 export class WorkspaceController {
   sessions = $state<Session[]>([]);
   tabs = $state<Tab[]>([]);
   ports = $state<SessionPort[]>([]);
-  files = $state<FileMetadata[]>([]);
+  fileEntries = $state<FileRecord[]>([]);
   sshKeys = $state<SSHKey[]>([]);
   activeSessionId = $state('');
   activeTabId = $state('');
   terminalStatus = $state<TerminalStatus>('disconnected');
   terminalError = $state('');
+  filesDrawerOpen = $state(false);
+  currentFolderPath = $state('');
   utilityPaneOpen = $state(false);
-  utilityPaneTab = $state<UtilityPaneTab>('files');
+  utilityPaneTab = $state<UtilityPaneTab>('ports');
   shareLink = $state('');
   shareLookup = $state<ShareLookup | null>(null);
   isWorkspaceLoading = $state(true);
   isFilesLoading = $state(false);
+  isFilesRefreshing = $state(false);
   isFilesUploading = $state(false);
   isPortsLoading = $state(false);
   isToolsLoading = $state(false);
@@ -63,6 +202,30 @@ export class WorkspaceController {
     return this.utilityPaneOpen;
   }
 
+  get fileTree(): FileTreeNode[] {
+    return buildFileTree(this.fileEntries);
+  }
+
+  get folderTreeItems(): FolderTreeItem[] {
+    return flattenFolderTree(this.fileTree);
+  }
+
+  get fileBreadcrumbs(): FileBreadcrumb[] {
+    const breadcrumbs: FileBreadcrumb[] = [{ label: '~', path: '' }];
+    let currentPath = '';
+
+    for (const segment of normalizeFolderPath(this.currentFolderPath).split('/').filter(Boolean)) {
+      currentPath = joinFolderPath(currentPath, segment);
+      breadcrumbs.push({ label: segment, path: currentPath });
+    }
+
+    return breadcrumbs;
+  }
+
+  get currentFolderEntries(): FileTreeNode[] {
+    return (findFolderNode(this.fileTree, this.currentFolderPath)?.children ?? []).slice();
+  }
+
   private resetWorkspaceSelection() {
     this.tabs = [];
     this.ports = [];
@@ -75,7 +238,6 @@ export class WorkspaceController {
   private resetWorkspaceData() {
     this.resetWorkspaceSelection();
     this.sessions = [];
-    this.files = [];
     this.sshKeys = [];
     this.shareLink = '';
     this.shareLookup = null;
@@ -328,26 +490,50 @@ export class WorkspaceController {
     toast.success('Tab deleted');
   }
 
-  async loadFiles() {
-    this.isFilesLoading = true;
+  async loadFiles(options: { refresh?: boolean } = {}) {
+    if (options.refresh) {
+      this.isFilesRefreshing = true;
+    } else {
+      this.isFilesLoading = true;
+    }
+
     try {
-      const data = await this.fetchJson<{ files: FileMetadata[] }>('/files/list');
-      this.files = data.files;
+      const data = await this.fetchJson<{ files: FileRecord[] }>('/files/tree');
+      this.fileEntries = data.files
+        .map((file) => ({ ...file, path: normalizeFolderPath(file.path) }))
+        .filter((file) => file.path);
+
+      if (this.currentFolderPath) {
+        const folderExists = !!findFolderNode(this.fileTree, this.currentFolderPath);
+        if (!folderExists) {
+          this.currentFolderPath = '';
+        }
+      }
     } finally {
-      this.isFilesLoading = false;
+      if (options.refresh) {
+        this.isFilesRefreshing = false;
+      } else {
+        this.isFilesLoading = false;
+      }
     }
   }
 
-  async uploadFiles(fileList: FileList | null) {
+  async uploadFiles(fileList: FileList | null, targetPath = this.currentFolderPath) {
     if (!fileList || fileList.length === 0) {
       return;
     }
 
     this.isFilesUploading = true;
     try {
+      const normalizedTargetPath = normalizeFolderPath(targetPath);
+
       for (const file of Array.from(fileList)) {
         const formData = new FormData();
         formData.append('file', file);
+        formData.append('path', normalizedTargetPath);
+        if (this.activeSessionId) {
+          formData.append('sessionId', this.activeSessionId);
+        }
         const response = await fetch('/api/cloudshell/files/upload', {
           method: 'POST',
           body: formData,
@@ -357,9 +543,18 @@ export class WorkspaceController {
           const payload = (await response.json().catch(() => ({}))) as { error?: string };
           throw new Error(payload.error || `Failed to upload ${file.name}`);
         }
+
+        const payload = (await response.json().catch(() => ({}))) as {
+          shellVisible?: boolean;
+          error?: string;
+        };
+
+        if (payload.shellVisible === false) {
+          toast.warning(`${file.name} uploaded, but the active shell has not reflected it yet.`);
+        }
       }
 
-      await this.loadFiles();
+      await this.loadFiles({ refresh: true });
       toast.success('Files uploaded');
     } finally {
       this.isFilesUploading = false;
@@ -371,7 +566,52 @@ export class WorkspaceController {
       return;
     }
 
-    window.open(`/api/cloudshell/files/download/${encodeURIComponent(name)}`, '_blank');
+    const normalizedPath = normalizeFolderPath(name);
+    window.open(`/api/cloudshell/files/download/${encodeURIComponent(normalizedPath)}`, '_blank');
+  }
+
+  async openFilesDrawer() {
+    this.filesDrawerOpen = true;
+    try {
+      await this.loadFiles();
+    } catch (error) {
+      toast.error((error as Error).message || 'Unable to load files');
+    }
+  }
+
+  closeFilesDrawer() {
+    this.filesDrawerOpen = false;
+  }
+
+  async toggleFilesDrawer() {
+    if (this.filesDrawerOpen) {
+      this.closeFilesDrawer();
+      return;
+    }
+
+    await this.openFilesDrawer();
+  }
+
+  async refreshFiles() {
+    try {
+      await this.loadFiles({ refresh: true });
+    } catch (error) {
+      toast.error((error as Error).message || 'Unable to refresh files');
+    }
+  }
+
+  setCurrentFolder(path: string) {
+    this.currentFolderPath = normalizeFolderPath(path);
+  }
+
+  navigateUpFolder() {
+    const segments = normalizeFolderPath(this.currentFolderPath).split('/').filter(Boolean);
+    if (segments.length === 0) {
+      return;
+    }
+
+    segments.pop();
+    this.currentFolderPath = segments.join('/');
   }
 
   async loadPorts() {
@@ -478,20 +718,6 @@ export class WorkspaceController {
     toast.success('Share metadata loaded');
   }
 
-  async saveDockerfile(dockerfile: string) {
-    const trimmedDockerfile = dockerfile.trim();
-    if (!trimmedDockerfile) {
-      throw new Error('Dockerfile content is required');
-    }
-
-    await this.fetchJson<{ message: string }>('/container/custom', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dockerfile: trimmedDockerfile }),
-    });
-    toast.success('Custom Dockerfile saved');
-  }
-
   async backupWorkspace() {
     this.isBusy = true;
     try {
@@ -503,11 +729,6 @@ export class WorkspaceController {
   }
 
   async ensureUtilityData(tab: UtilityPaneTab) {
-    if (tab === 'files') {
-      await this.loadFiles();
-      return;
-    }
-
     if (tab === 'ports') {
       await this.loadPorts();
       return;

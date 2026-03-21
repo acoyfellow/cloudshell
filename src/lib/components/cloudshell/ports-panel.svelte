@@ -5,9 +5,9 @@
   import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '$lib/components/ui/empty';
   import { InputGroup, InputGroupButton, InputGroupInput } from '$lib/components/ui/input-group';
   import { ScrollArea } from '$lib/components/ui/scroll-area';
-  import { Skeleton } from '$lib/components/ui/skeleton';
   import { toast } from 'svelte-sonner';
   import type { WorkspaceController } from '$lib/cloudshell/workspace-controller.svelte';
+  import LoadingPane from './loading-pane.svelte';
 
   let { controller }: { controller: WorkspaceController } = $props();
 
@@ -58,10 +58,8 @@
     </div>
     <div class="min-h-0 flex-1">
       {#if controller.isPortsLoading}
-        <div class="space-y-3">
-          {#each Array.from({ length: 4 }) as _, index (index)}
-            <Skeleton class="h-18 rounded-lg" />
-          {/each}
+        <div class="h-full">
+          <LoadingPane compact />
         </div>
       {:else if controller.ports.length === 0}
         <Empty class="bg-muted/20 rounded-lg border">

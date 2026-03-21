@@ -4,6 +4,10 @@
 
 @custom-variant dark (&:is(.dark *));
 
+body.invert {
+	filter: invert(1);
+}
+
 :root {
 	--background: oklch(1 0 0);
 	--foreground: oklch(0.145 0 0);
@@ -360,4 +364,11 @@
 		border-radius: 999px;
 		background-clip: padding-box;
 	}
+}
+
+button{
+  @apply cursor-pointer hit-area-2;
+}
+input, textarea{
+  @apply hit-area-2;
 }

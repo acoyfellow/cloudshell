@@ -1,3 +1,14 @@
+<script lang="ts" module>
+  export type DestructiveConfirmProps = {
+    open?: boolean;
+    title: string;
+    description: string;
+    confirmLabel?: string;
+    onConfirm: () => Promise<void>;
+    onOpenChange?: (open: boolean) => void;
+  };
+</script>
+
 <script lang="ts">
   import { toast } from 'svelte-sonner';
   import * as AlertDialog from '$lib/components/ui/alert-dialog';
@@ -8,13 +19,8 @@
     description,
     confirmLabel = 'Delete',
     onConfirm,
-  }: {
-    open?: boolean;
-    title: string;
-    description: string;
-    confirmLabel?: string;
-    onConfirm: () => Promise<void>;
-  } = $props();
+    onOpenChange,
+  }: DestructiveConfirmProps = $props();
 
   let isSubmitting = $state(false);
 
@@ -35,7 +41,7 @@
   }
 </script>
 
-<AlertDialog.Root bind:open>
+<AlertDialog.Root bind:open {onOpenChange}>
   <AlertDialog.Content class="sm:max-w-md">
     <AlertDialog.Header>
       <AlertDialog.Title>{title}</AlertDialog.Title>

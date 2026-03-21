@@ -1,5 +1,4 @@
 <script lang="ts">
-  import FileStack from '@lucide/svelte/icons/file-stack';
   import PanelRightOpen from '@lucide/svelte/icons/panel-right-open';
   import Wrench from '@lucide/svelte/icons/wrench';
   import X from '@lucide/svelte/icons/x';
@@ -8,7 +7,6 @@
   import * as Sheet from '$lib/components/ui/sheet';
   import * as Tabs from '$lib/components/ui/tabs';
   import type { UtilityPaneTab, WorkspaceController } from '$lib/cloudshell/workspace-controller.svelte';
-  import FilesPanel from './files-panel.svelte';
   import PortsPanel from './ports-panel.svelte';
   import ToolsPanel from './tools-panel.svelte';
 
@@ -20,8 +18,7 @@
     mode: 'desktop' | 'mobile';
   } = $props();
 
-  const utilityTabs: Array<{ value: UtilityPaneTab; label: string; icon: typeof FileStack }> = [
-    { value: 'files', label: 'Files', icon: FileStack },
+  const utilityTabs: Array<{ value: UtilityPaneTab; label: string; icon: typeof Cable }> = [
     { value: 'ports', label: 'Ports', icon: Cable },
     { value: 'tools', label: 'Tools', icon: Wrench },
   ];
@@ -34,7 +31,7 @@
         <PanelRightOpen class="text-muted-foreground size-4 shrink-0" />
         <div class="min-w-0">
           <div class="font-medium">Utility workspace</div>
-          <div class="text-muted-foreground text-xs">Files, ports, and workstation tools</div>
+          <div class="text-muted-foreground text-xs">Ports and workstation tools</div>
         </div>
       </div>
 
@@ -62,9 +59,6 @@
         </Tabs.List>
       </div>
 
-      <Tabs.Content value="files" class="min-h-0 flex-1 px-4 pt-5 pb-4">
-        <FilesPanel {controller} />
-      </Tabs.Content>
       <Tabs.Content value="ports" class="min-h-0 flex-1 px-4 pt-5 pb-4">
         <PortsPanel {controller} />
       </Tabs.Content>
@@ -85,7 +79,7 @@
     >
       <Sheet.Header class="sr-only">
         <Sheet.Title>Utility workspace</Sheet.Title>
-        <Sheet.Description>Files, ports, and workstation tools.</Sheet.Description>
+        <Sheet.Description>Ports and workstation tools.</Sheet.Description>
       </Sheet.Header>
       <div class="h-full p-3">
         {@render UtilityContent()}

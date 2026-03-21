@@ -1,5 +1,4 @@
 <script lang="ts">
-  import FolderKanban from '@lucide/svelte/icons/folder-kanban';
   import KeyRound from '@lucide/svelte/icons/key-round';
   import Link2 from '@lucide/svelte/icons/link-2';
   import Save from '@lucide/svelte/icons/save';
@@ -9,18 +8,17 @@
   import * as Field from '$lib/components/ui/field';
   import { Input } from '$lib/components/ui/input';
   import { ScrollArea } from '$lib/components/ui/scroll-area';
-  import { Skeleton } from '$lib/components/ui/skeleton';
   import { Textarea } from '$lib/components/ui/textarea';
   import { Button } from '$lib/components/ui/button';
   import { toast } from 'svelte-sonner';
   import type { WorkspaceController } from '$lib/cloudshell/workspace-controller.svelte';
+  import LoadingPane from './loading-pane.svelte';
 
   let { controller }: { controller: WorkspaceController } = $props();
 
   let shareLookupInput = $state('');
   let sshKeyName = $state('');
   let sshKeyValue = $state('');
-  let dockerfile = $state('');
 
   async function runWithToast(action: () => Promise<void>) {
     try {
@@ -118,10 +116,8 @@
         </Button>
 
         {#if controller.isToolsLoading}
-          <div class="space-y-3">
-            {#each Array.from({ length: 3 }) as _, index (index)}
-              <Skeleton class="h-16 rounded-lg" />
-            {/each}
+          <div class="h-32">
+            <LoadingPane compact />
           </div>
         {:else if controller.sshKeys.length === 0}
           <Empty class="bg-muted/20 rounded-lg border">
@@ -153,18 +149,6 @@
             {/each}
           </div>
         {/if}
-    </section>
-
-    <section class="space-y-4">
-      <div class="space-y-1">
-        <h3 class="text-base font-semibold">Custom Dockerfile</h3>
-        <p class="text-muted-foreground text-sm">Override the container image build for this workstation.</p>
-      </div>
-        <Textarea bind:value={dockerfile} placeholder="Paste a custom Dockerfile here" rows={10} />
-        <Button size="lg" class="w-full justify-start" variant="outline" onclick={() => runWithToast(() => controller.saveDockerfile(dockerfile))}>
-          <FolderKanban />
-          <span>Save Dockerfile</span>
-        </Button>
     </section>
   </div>
 </ScrollArea>

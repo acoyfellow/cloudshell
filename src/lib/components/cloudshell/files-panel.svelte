@@ -1,121 +1,236 @@
 <script lang="ts">
-  import Download from '@lucide/svelte/icons/download';
-  import FilesIcon from '@lucide/svelte/icons/files';
+  import ChevronRight from '@lucide/svelte/icons/chevron-right';
+  import RefreshCw from '@lucide/svelte/icons/refresh-cw';
   import Upload from '@lucide/svelte/icons/upload';
   import { Button } from '$lib/components/ui/button';
   import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '$lib/components/ui/empty';
   import { ScrollArea } from '$lib/components/ui/scroll-area';
-  import { Skeleton } from '$lib/components/ui/skeleton';
   import { Spinner } from '$lib/components/ui/spinner';
   import type { WorkspaceController } from '$lib/cloudshell/workspace-controller.svelte';
+  import type { FileTreeNode } from '$lib/cloudshell/types';
+  import FileTreeNodeView from './file-tree-node.svelte';
+  import LoadingPane from './loading-pane.svelte';
 
   let { controller }: { controller: WorkspaceController } = $props();
 
-  const dateFormatter = new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  const fileBreadcrumbs = $derived(controller.fileBreadcrumbs ?? []);
+  let expandedFolders = $state<string[]>([]);
+  let fileInput: HTMLInputElement | null = null;
+  let dragDepth = $state(0);
+  let isDraggingFiles = $state(false);
 
-  function formatSize(size: number): string {
-    if (size < 1024) {
-      return `${size} B`;
+  function expandAncestors(path: string) {
+    const segments = path.split('/').filter(Boolean);
+    let current = '';
+    const next = new Set(expandedFolders);
+
+    for (const segment of segments) {
+      current = current ? `${current}/${segment}` : segment;
+      next.add(current);
     }
 
-    if (size < 1024 * 1024) {
-      return `${Math.round(size / 1024)} KB`;
-    }
-
-    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+    expandedFolders = Array.from(next);
   }
+
+  function isExpanded(path: string): boolean {
+    return expandedFolders.includes(path);
+  }
+
+  function toggleFolder(path: string) {
+    controller.setCurrentFolder(path);
+
+    if (isExpanded(path)) {
+      expandedFolders = expandedFolders.filter((candidate) => candidate !== path);
+      return;
+    }
+
+    expandAncestors(path);
+  }
+
+  function openFile(path: string) {
+    controller.downloadFile(path);
+  }
+
+  function openFilePicker() {
+    if (controller.isFilesUploading) {
+      return;
+    }
+
+    fileInput?.click();
+  }
+
+  async function handleFileSelection(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    await controller.uploadFiles(input.files, controller.currentFolderPath);
+    input.value = '';
+  }
+
+  function hasFilePayload(event: DragEvent): boolean {
+    return event.dataTransfer?.types.includes('Files') ?? false;
+  }
+
+  function handleDragEnter(event: DragEvent) {
+    if (!hasFilePayload(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    dragDepth += 1;
+    isDraggingFiles = true;
+  }
+
+  function handleDragOver(event: DragEvent) {
+    if (!hasFilePayload(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'copy';
+    }
+  }
+
+  function handleDragLeave(event: DragEvent) {
+    if (!hasFilePayload(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) {
+      isDraggingFiles = false;
+    }
+  }
+
+  async function handleDrop(event: DragEvent) {
+    if (!hasFilePayload(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    dragDepth = 0;
+    isDraggingFiles = false;
+    await controller.uploadFiles(event.dataTransfer?.files ?? null, controller.currentFolderPath);
+  }
+
+  $effect(() => {
+    if (controller.currentFolderPath) {
+      expandAncestors(controller.currentFolderPath);
+    }
+  });
 </script>
 
-<div class="flex h-full flex-col gap-4">
-  <section class="space-y-3">
-    <div class="space-y-1">
-      <h3 class="text-base font-semibold">Workspace files</h3>
-      <p class="text-muted-foreground text-sm">
-        Upload artifacts to your shared user box and pull them back down from any session.
-      </p>
+<div
+  class="relative flex h-full min-h-0 flex-col"
+  role="region"
+  aria-label="Files drawer"
+  ondragenter={handleDragEnter}
+  ondragover={handleDragOver}
+  ondragleave={handleDragLeave}
+  ondrop={handleDrop}
+>
+  <div class="border-border/40 flex items-center justify-between gap-3 border-b px-4 py-3 pr-24">
+    <div class="flex min-w-0 flex-wrap items-center gap-1 text-sm">
+      {#each fileBreadcrumbs as breadcrumb, index (breadcrumb.path)}
+        <button
+          class={`hover:text-foreground rounded px-1 py-0.5 transition-colors ${
+            breadcrumb.path === controller.currentFolderPath
+              ? 'text-foreground'
+              : 'text-muted-foreground'
+          }`}
+          onclick={() => controller.setCurrentFolder(breadcrumb.path)}
+          type="button"
+        >
+          {breadcrumb.label}
+        </button>
+        {#if index < fileBreadcrumbs.length - 1}
+          <ChevronRight class="text-muted-foreground size-3.5" />
+        {/if}
+      {/each}
     </div>
-    <label class="bg-muted/20 hover:bg-muted/35 flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-5 py-8 text-center transition-colors">
-      <div class="bg-background text-foreground flex size-10 items-center justify-center rounded-md border">
+
+    <input
+      bind:this={fileInput}
+      hidden
+      multiple
+      type="file"
+      onchange={handleFileSelection}
+    />
+
+    <div class="flex shrink-0 items-center gap-2">
+      <Button
+        size="icon"
+        variant="ghost"
+        class="rounded-lg"
+        onclick={() => void controller.refreshFiles()}
+        disabled={controller.isFilesRefreshing || controller.isFilesUploading}
+        aria-label="Refresh files"
+        title="Refresh files"
+      >
+        {#if controller.isFilesRefreshing}
+          <Spinner class="size-4" />
+        {:else}
+          <RefreshCw class="size-4" />
+        {/if}
+      </Button>
+
+      <Button
+        size="sm"
+        variant="outline"
+        class="shrink-0"
+        onclick={openFilePicker}
+        disabled={controller.isFilesUploading}
+      >
         {#if controller.isFilesUploading}
           <Spinner class="size-4" />
         {:else}
           <Upload class="size-4" />
         {/if}
-      </div>
-      <div class="space-y-1">
-        <p class="text-sm font-medium">
-          {controller.isFilesUploading ? 'Uploading files…' : 'Drop files here or click to upload'}
-        </p>
-        <p class="text-muted-foreground text-xs">
-          Files are stored in your shared workstation and available across sessions.
-        </p>
-      </div>
-      <input
-        hidden
-        multiple
-        type="file"
-        onchange={(event) => controller.uploadFiles((event.currentTarget as HTMLInputElement).files)}
-      />
-    </label>
-  </section>
-
-  <section class="min-h-0 flex-1 space-y-3">
-    <div class="space-y-1">
-      <h3 class="text-base font-semibold">Recent files</h3>
-      <p class="text-muted-foreground text-sm">Download or inspect the latest uploads from your workstation.</p>
+        <span>{controller.isFilesUploading ? 'Uploading…' : 'Upload'}</span>
+      </Button>
     </div>
-    <div class="min-h-0 flex-1">
-      {#if controller.isFilesLoading}
-        <div class="space-y-3">
-          {#each Array.from({ length: 4 }) as _, index (index)}
-            <Skeleton class="h-18 rounded-lg" />
+  </div>
+
+  {#if isDraggingFiles}
+    <div class="bg-background/80 border-primary/40 pointer-events-none absolute inset-3 z-10 flex items-center justify-center rounded-xl border border-dashed backdrop-blur-sm">
+      <div class="bg-card text-card-foreground flex items-center gap-3 rounded-xl border px-4 py-3 shadow-sm">
+        <Upload class="size-4" />
+        <div class="text-sm font-medium">Drop files to upload here</div>
+      </div>
+    </div>
+  {/if}
+
+  <div class="min-h-0 flex-1">
+    {#if controller.isFilesLoading}
+      <div class="h-full p-4">
+        <LoadingPane compact />
+      </div>
+    {:else if controller.fileTree.length === 0}
+      <Empty class="h-full border-0 bg-transparent">
+        <EmptyHeader>
+          <EmptyMedia>
+            <Upload class="text-muted-foreground size-5" />
+          </EmptyMedia>
+          <EmptyTitle>No files yet</EmptyTitle>
+          <EmptyDescription>
+            Upload a file to start building out your workstation folders.
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    {:else}
+      <ScrollArea class="h-full">
+        <div class="space-y-1 p-3">
+          {#each controller.fileTree as node (node.path)}
+            <FileTreeNodeView
+              {node}
+              {controller}
+              isExpanded={isExpanded}
+              onToggleFolder={toggleFolder}
+              onOpenFile={openFile}
+            />
           {/each}
         </div>
-      {:else if controller.files.length === 0}
-        <Empty class="bg-muted/20 rounded-lg border">
-          <EmptyHeader>
-            <EmptyMedia>
-              <FilesIcon class="text-muted-foreground size-5" />
-            </EmptyMedia>
-            <EmptyTitle>No files yet</EmptyTitle>
-            <EmptyDescription>
-              Upload a file to make it available across your sessions and tabs.
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      {:else}
-        <ScrollArea class="h-full pr-3">
-          <div class="space-y-3">
-            {#each controller.files as file (file.path)}
-              <button
-                class="bg-background hover:bg-muted/40 flex w-full items-center justify-between gap-3 rounded-lg border px-4 py-3 text-left transition-colors"
-                onclick={() => controller.downloadFile(file.name)}
-                type="button"
-              >
-                <div class="min-w-0 space-y-1">
-                  <div class="flex items-center gap-2">
-                    <FilesIcon class="text-primary size-4" />
-                    <span class="truncate font-medium">{file.name}</span>
-                  </div>
-                  <div class="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                    <span>{formatSize(file.size)}</span>
-                    <span>{dateFormatter.format(file.modifiedAt)}</span>
-                  </div>
-                </div>
-                <Button size="icon-sm" variant="ghost">
-                  <Download class="size-4" />
-                  <span class="sr-only">Download {file.name}</span>
-                </Button>
-              </button>
-            {/each}
-          </div>
-        </ScrollArea>
-      {/if}
-    </div>
-  </section>
+      </ScrollArea>
+    {/if}
+  </div>
 </div>

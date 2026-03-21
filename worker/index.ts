@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import { Container } from '@cloudflare/containers';
+import { Container, getContainer } from '@cloudflare/containers';
 import {
   backupWorkspace,
   checkpointSession,
@@ -23,7 +23,8 @@ import {
   updateSession,
 } from './effect/programs';
 import { runJsonRoute, runRequestEffect, runRouteEffect, toRouteErrorResponse } from './effect/runtime';
-import { readWorkerIdentity } from './auth';
+import { getUserSessionContainerId, readWorkerIdentity } from './auth';
+import { isContainerActiveStatus } from './tabs';
 import type { Env } from './types';
 
 // Export the Container class for Durable Object binding
@@ -59,6 +60,81 @@ class ShellContainer extends Container {
 class CloudShellSandbox extends Container {
   defaultPort = 8080;
   sleepAfter = '5m';
+}
+
+function normalizeRelativeFilePath(input: string | undefined | null): string {
+  const trimmed = (input ?? '').trim().replace(/^\/+|\/+$/g, '');
+  if (!trimmed) {
+    return '';
+  }
+
+  const segments = trimmed
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter((segment) => segment && segment !== '.' && segment !== '..');
+
+  return segments.join('/');
+}
+
+function fileStoragePrefix(userId: string): string {
+  return `${userId}/`;
+}
+
+function buildFileStorageKey(userId: string, relativePath: string): string {
+  const normalizedPath = normalizeRelativeFilePath(relativePath);
+  return `${fileStoragePrefix(userId)}${normalizedPath}`;
+}
+
+async function verifyShellVisibleFile(
+  env: Env,
+  userId: string,
+  sessionId: string | null,
+  relativePath: string
+): Promise<boolean | null> {
+  const normalizedSessionId = sessionId?.trim();
+  const normalizedPath = normalizeRelativeFilePath(relativePath);
+
+  if (!normalizedSessionId || !normalizedPath) {
+    return null;
+  }
+
+  try {
+    const container = getContainer(env.Sandbox, getUserSessionContainerId(userId, normalizedSessionId));
+    const state = await container.getState();
+    if (!isContainerActiveStatus(state.status)) {
+      return null;
+    }
+
+    await container.waitForPort({ portToCheck: 8080 });
+
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const response = await container.fetch(
+        new Request(
+          `http://localhost:8080/api/files/stat?path=${encodeURIComponent(normalizedPath)}`,
+          {
+            method: 'GET',
+            headers: {
+              'X-User': userId,
+              'X-Session-Id': normalizedSessionId,
+            },
+          }
+        )
+      );
+
+      if (response.ok) {
+        const payload = (await response.json()) as { exists?: boolean };
+        if (payload.exists === true) {
+          return true;
+        }
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+
+    return false;
+  } catch {
+    return null;
+  }
 }
 
 function createApp() {
@@ -160,33 +236,6 @@ function createApp() {
   app.post('/api/backup', (c) =>
     runJsonRoute(c, backupWorkspace(c.req.header('X-User-Id')))
   );
-
-  // Remaining authenticated APIs
-  app.post('/api/container/custom', async (c) => {
-    const userId = await requireUserId(c);
-    if (userId instanceof Response) {
-      return userId;
-    }
-
-    const body = await c.req.raw
-      .json<{ dockerfile?: string }>()
-      .catch(() => ({}) as { dockerfile?: string });
-    if (!body.dockerfile) {
-      return c.json({ error: 'Dockerfile content required' }, 400);
-    }
-
-    await c.env.USERS_KV.put(`dockerfile:${userId}`, body.dockerfile);
-
-    return c.json({
-      message: 'Custom Dockerfile saved',
-      note: 'To apply changes, rebuild and redeploy the container',
-      nextSteps: [
-        '1. Clone the repository',
-        '2. Replace Dockerfile with your custom content',
-        '3. Run: bun run deploy',
-      ],
-    });
-  });
 
   app.post('/api/share', async (c) => {
     const userId = await requireUserId(c);
@@ -321,28 +370,31 @@ function createApp() {
     });
   });
 
-  app.get('/api/files/list', async (c) => {
+  async function listFiles(c: Context<{ Bindings: Env }>) {
     const userId = await requireUserId(c);
     if (userId instanceof Response) {
       return userId;
     }
 
-    const prefix = `user:${userId}/`;
+    const prefix = fileStoragePrefix(userId);
 
     try {
       const objects = await c.env.USER_DATA.list({ prefix });
       const files = objects.objects.map((object) => ({
-        name: object.key.replace(prefix, ''),
+        name: object.key.replace(prefix, '').split('/').pop() ?? object.key.replace(prefix, ''),
         size: object.size,
         modifiedAt: object.uploaded.getTime(),
-        path: object.key,
+        path: object.key.replace(prefix, ''),
       }));
 
       return c.json({ files });
     } catch {
       return c.json({ error: 'Failed to list files' }, 500);
     }
-  });
+  }
+
+  app.get('/api/files/list', listFiles);
+  app.get('/api/files/tree', listFiles);
 
   app.post('/api/files/upload', async (c) => {
     const userId = await requireUserId(c);
@@ -352,12 +404,21 @@ function createApp() {
 
     const body = await c.req.parseBody();
     const file = body.file;
+    const targetPath =
+      typeof body.path === 'string' ? normalizeRelativeFilePath(body.path) : '';
+    const activeSessionId =
+      typeof body.sessionId === 'string' && body.sessionId.trim() !== ''
+        ? body.sessionId.trim()
+        : null;
 
     if (!file || !(file instanceof File)) {
       return c.json({ error: 'No file provided' }, 400);
     }
 
-    const key = `user:${userId}/${file.name}`;
+    const relativePath = normalizeRelativeFilePath(
+      targetPath ? `${targetPath}/${file.name}` : file.name
+    );
+    const key = buildFileStorageKey(userId, relativePath);
     const arrayBuffer = await file.arrayBuffer();
 
     try {
@@ -365,14 +426,53 @@ function createApp() {
         httpMetadata: { contentType: file.type || 'application/octet-stream' },
       });
 
+      const shellVisible = await verifyShellVisibleFile(
+        c.env,
+        userId,
+        activeSessionId,
+        relativePath
+      );
+
       return c.json({
         success: true,
-        path: key,
+        path: relativePath,
         name: file.name,
         size: file.size,
+        shellVisible,
       });
     } catch {
       return c.json({ error: 'Failed to upload file' }, 500);
+    }
+  });
+
+  app.get('/api/files/download/*', async (c) => {
+    const userId = await requireUserId(c);
+    if (userId instanceof Response) {
+      return userId;
+    }
+
+    const requestPath = c.req.path.replace('/api/files/download/', '');
+    const relativePath = normalizeRelativeFilePath(decodeURIComponent(requestPath));
+
+    if (!relativePath) {
+      return c.json({ error: 'File path is required' }, 400);
+    }
+
+    const key = buildFileStorageKey(userId, relativePath);
+
+    try {
+      const object = await c.env.USER_DATA.get(key);
+      if (!object) {
+        return c.json({ error: 'File not found' }, 404);
+      }
+
+      const headers = new Headers();
+      headers.set('Content-Type', object.httpMetadata?.contentType || 'application/octet-stream');
+      headers.set('Content-Disposition', `attachment; filename="${relativePath.split('/').pop() ?? relativePath}"`);
+
+      return new Response(object.body, { headers });
+    } catch {
+      return c.json({ error: 'Failed to download file' }, 500);
     }
   });
 
@@ -382,8 +482,8 @@ function createApp() {
       return userId;
     }
 
-    const filename = c.req.param('name');
-    const key = `user:${userId}/${filename}`;
+    const filename = normalizeRelativeFilePath(c.req.param('name'));
+    const key = buildFileStorageKey(userId, filename);
 
     try {
       const object = await c.env.USER_DATA.get(key);

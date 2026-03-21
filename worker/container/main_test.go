@@ -76,6 +76,23 @@ func TestTabStatePath(t *testing.T) {
 	}
 }
 
+func TestSanitizeRelativePath(t *testing.T) {
+	t.Parallel()
+
+	if got := sanitizeRelativePath("/demo/../nested/./file.txt/"); got != "demo/nested/file.txt" {
+		t.Fatalf("sanitizeRelativePath = %q, want demo/nested/file.txt", got)
+	}
+}
+
+func TestUserFilePath(t *testing.T) {
+	t.Parallel()
+
+	want := filepath.Join("/home/user", "alice", "demo", "nested", "file.txt")
+	if got := userFilePath("alice", "/demo/nested/file.txt"); got != want {
+		t.Fatalf("userFilePath = %q, want %q", got, want)
+	}
+}
+
 func TestTmuxDefaultCommands(t *testing.T) {
 	t.Parallel()
 
