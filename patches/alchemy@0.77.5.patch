@@ -1,0 +1,32 @@
+diff --git a/lib/cloudflare/api.js b/lib/cloudflare/api.js
+index a5efe2bc3d3c348bebe4f41716cc5fad0ebd9f4e..6a95e28e68b75903196a4af5853e9221c45166d6 100644
+--- a/lib/cloudflare/api.js
++++ b/lib/cloudflare/api.js
+@@ -117,7 +117,10 @@ export class CloudflareApi {
+             });
+         }
+         else if (init.headers) {
+-            headers = init.headers;
++            headers = {
++                ...headers,
++                ...init.headers,
++            };
+         }
+         headers = {
+             ...(await CloudflareAuth.formatHeadersWithRefresh({
+diff --git a/src/cloudflare/api.ts b/src/cloudflare/api.ts
+index fa78645b8413d2e8751a24453bf9b81499946707..e2aecb25c1735aac0502798311e56a201ab31c7c 100644
+--- a/src/cloudflare/api.ts
++++ b/src/cloudflare/api.ts
+@@ -184,7 +184,10 @@ export class CloudflareApi {
+         headers[key] = value;
+       });
+     } else if (init.headers) {
+-      headers = init.headers;
++      headers = {
++        ...headers,
++        ...init.headers,
++      };
+     }
+     headers = {
+       ...(await CloudflareAuth.formatHeadersWithRefresh({

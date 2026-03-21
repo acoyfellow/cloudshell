@@ -60,5 +60,8 @@
     "hono": "4.12.8",
     "zod": "^4.3.6"
   },
-  "type": "module"
+  "type": "module",
+  "patchedDependencies": {
+    "alchemy@0.77.5": "patches/alchemy@0.77.5.patch"
+  }
 }
