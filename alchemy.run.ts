@@ -1,6 +1,7 @@
 import alchemy from 'alchemy';
 import {
   Container,
+  CustomDomain,
   D1Database,
   KVNamespace,
   R2Bucket,
@@ -10,6 +11,8 @@ import {
 
 const projectName = 'cloudshell';
 const workerName = `${projectName}-worker`;
+const customDomainName = 'cloudshell.coey.dev';
+const appBaseUrl = process.env.BETTER_AUTH_URL || `https://${customDomainName}`;
 const terminalTicketSecret =
   process.env.TERMINAL_TICKET_SECRET ||
   process.env.BETTER_AUTH_SECRET ||
@@ -80,10 +83,17 @@ export const APP = await SvelteKit(`${projectName}-app`, {
   adopt: true,
   env: {
     BETTER_AUTH_SECRET: terminalTicketSecret,
-    BETTER_AUTH_URL: process.env.BETTER_AUTH_URL || 'http://localhost:5173',
+    BETTER_AUTH_URL: appBaseUrl,
+    BETTER_AUTH_TRUSTED_ORIGINS: ['http://localhost:5173', appBaseUrl].join(','),
     TERMINAL_TICKET_SECRET: terminalTicketSecret,
     WORKER_DEV_ORIGIN: WORKER.url || 'http://localhost:1337',
   },
+});
+
+export const APP_DOMAIN = await CustomDomain(`${projectName}-app-domain`, {
+  name: customDomainName,
+  workerName: APP.name,
+  adopt: true,
 });
 
 await project.finalize();

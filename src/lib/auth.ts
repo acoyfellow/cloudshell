@@ -12,6 +12,7 @@ type AuthInstance = ReturnType<typeof betterAuth>;
 let authInstance: AuthInstance | null = null;
 let drizzleInstance: ReturnType<typeof drizzle> | null = null;
 let authBaseURL: string | null = null;
+let authConfigKey: string | null = null;
 
 export function getAuth(): AuthInstance {
   if (!authInstance) {
@@ -47,14 +48,16 @@ export function initAuth(db: D1Database, env?: any, baseURL?: string): AuthInsta
       ].filter(Boolean)
     )
   );
-  
-  // Only create once
-  if (authInstance && drizzleInstance) {
+  const configKey = JSON.stringify({
+    resolvedBaseURL,
+    trustedOrigins,
+  });
+
+  if (authInstance && drizzleInstance && authConfigKey === configKey) {
     authBaseURL = authBaseURL || resolvedBaseURL;
     return authInstance;
   }
-  
-  // Create singleton Drizzle instance
+
   if (!drizzleInstance) {
     drizzleInstance = drizzle(db, {
       schema: {
@@ -66,35 +69,35 @@ export function initAuth(db: D1Database, env?: any, baseURL?: string): AuthInsta
     });
   }
 
-  if (!authInstance) {
-    authInstance = betterAuth({
-      trustedOrigins,
-      database: drizzleAdapter(drizzleInstance, {
-        provider: 'sqlite',
-        schema: {
-          user,
-          session,
-          account,
-          verification,
-        },
-      }),
-      emailAndPassword: {
-        enabled: true,
-        autoSignIn: true,
-        requireEmailVerification: false,
+  authInstance = betterAuth({
+    trustedOrigins,
+    database: drizzleAdapter(drizzleInstance, {
+      provider: 'sqlite',
+      schema: {
+        user,
+        session,
+        account,
+        verification,
       },
-      session: {
-        expiresIn: 60 * 60 * 24 * 7, // 7 days
-        updateAge: 60 * 60 * 24, // 1 day
-      },
-      secret: env?.BETTER_AUTH_SECRET || (() => {
-        throw new Error('BETTER_AUTH_SECRET environment variable is required');
-      })(),
-      baseURL: resolvedBaseURL,
-      plugins: [sveltekitCookies(getRequestEvent as any)],
-    }) as unknown as AuthInstance;
-    authBaseURL = resolvedBaseURL;
-  }
-  
+    }),
+    emailAndPassword: {
+      enabled: true,
+      autoSignIn: true,
+      requireEmailVerification: false,
+    },
+    session: {
+      expiresIn: 60 * 60 * 24 * 7,
+      updateAge: 60 * 60 * 24,
+    },
+    secret: env?.BETTER_AUTH_SECRET || (() => {
+      throw new Error('BETTER_AUTH_SECRET environment variable is required');
+    })(),
+    baseURL: resolvedBaseURL,
+    plugins: [sveltekitCookies(getRequestEvent as any)],
+  }) as unknown as AuthInstance;
+
+  authBaseURL = resolvedBaseURL;
+  authConfigKey = configKey;
+
   return authInstance as AuthInstance;
 }
