@@ -1,5 +1,4 @@
 <script lang="ts">
-  import FolderOpen from '@lucide/svelte/icons/folder-open';
   import Search from '@lucide/svelte/icons/search';
   import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
   import { Button } from '$lib/components/ui/button';
@@ -27,20 +26,6 @@
   <SidebarTrigger class="thumb-icon-target hit-area-2 shrink-0 rounded-lg" />
 {/snippet}
 
-{#snippet FilesButton()}
-  <Button
-    size="icon"
-    variant={controller.filesDrawerOpen ? 'default' : 'ghost'}
-    class="thumb-icon-target hit-area-2 rounded-xl"
-    aria-label={controller.filesDrawerOpen ? 'Close files' : 'Open files'}
-    title={controller.filesDrawerOpen ? 'Close files' : 'Open files'}
-    onclick={() => void controller.toggleFilesDrawer()}
-  >
-    <FolderOpen />
-    <span class="sr-only">{controller.filesDrawerOpen ? 'Close files' : 'Open files'}</span>
-  </Button>
-{/snippet}
-
 {#snippet ToolbarActions()}
   <Button
     size="icon"
@@ -56,7 +41,7 @@
 
   <Button
     size="icon"
-    variant={controller.utilityPaneOpen ? 'default' : 'outline'}
+    variant="ghost"
     class="thumb-icon-target hit-area-2 rounded-xl"
     aria-label={controller.utilityPaneOpen ? 'Close settings' : 'Open settings'}
     title={controller.utilityPaneOpen ? 'Close settings' : 'Open settings'}
@@ -85,7 +70,6 @@
     <div class="flex min-h-16 items-center justify-between gap-3 border-b border-border/40 px-3">
       <div class="flex items-center gap-2">
         {@render SidebarToggle()}
-        {@render FilesButton()}
       </div>
 
       <div class="flex shrink-0 items-center justify-end gap-2">
@@ -105,10 +89,6 @@
       <div class="flex min-w-0 flex-1 items-end gap-2 overflow-visible">
         <div class="mb-px">
           {@render SidebarToggle()}
-        </div>
-
-        <div class="mb-px">
-          {@render FilesButton()}
         </div>
 
         {#if controller.sessions.length > 0}

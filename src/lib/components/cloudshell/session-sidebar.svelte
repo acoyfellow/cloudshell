@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { base } from '$app/paths';
   import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right';
+  import FolderOpen from '@lucide/svelte/icons/folder-open';
   import Info from '@lucide/svelte/icons/info';
   import LogOut from '@lucide/svelte/icons/log-out';
   import MoreHorizontal from '@lucide/svelte/icons/ellipsis';
@@ -46,13 +46,17 @@
 >
   <Sidebar.Header class="border-b border-border/40 p-0">
     <div class="flex h-16 items-center gap-1 px-2">
-      <a
-        href={`${base}/`}
-        class="text-foreground flex shrink-0 items-center justify-center rounded-md p-1.5 outline-none ring-offset-background hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label="cloudshell home"
+      <Button
+        size="icon"
+        variant={controller.filesDrawerOpen ? 'default' : 'ghost'}
+        class="thumb-icon-target hit-area-2 shrink-0 rounded-xl"
+        aria-label={controller.filesDrawerOpen ? 'Close files' : 'Open files'}
+        title={controller.filesDrawerOpen ? 'Close files' : 'Open files'}
+        onclick={() => void controller.toggleFilesDrawer()}
       >
-        <img src={`${base}/logo.svg`} alt="" class="size-8 hit-area-2" width="32" height="32" />
-      </a>
+        <FolderOpen />
+        <span class="sr-only">{controller.filesDrawerOpen ? 'Close files' : 'Open files'}</span>
+      </Button>
       <Button
         variant="ghost"
         class="h-16 min-w-0 flex-1 justify-center rounded-none border-0 px-0"
