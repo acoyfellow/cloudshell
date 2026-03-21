@@ -3,6 +3,7 @@
   import Plus from '@lucide/svelte/icons/plus';
   import { authStore } from '$lib/auth-store.svelte';
   import { Button } from '$lib/components/ui/button';
+  import * as Dialog from '$lib/components/ui/dialog';
   import {
     Empty,
     EmptyContent,
@@ -14,17 +15,18 @@
   import { IsMobile } from '$lib/hooks/is-mobile.svelte';
   import { ResizableHandle, ResizablePane, ResizablePaneGroup } from '$lib/components/ui/resizable';
   import * as Sidebar from '$lib/components/ui/sidebar';
-  import { Skeleton } from '$lib/components/ui/skeleton';
   import type { Session, Tab } from '$lib/cloudshell/types';
   import { WorkspaceController } from '$lib/cloudshell/workspace-controller.svelte';
   import AppToolbar from './app-toolbar.svelte';
   import CommandPalette from './command-palette.svelte';
   import DestructiveConfirm from './destructive-confirm.svelte';
+  import FilesDrawer from './files-drawer.svelte';
   import SessionDialog from './session-dialog.svelte';
   import SessionSidebar from './session-sidebar.svelte';
   import TabDialog from './tab-dialog.svelte';
   import TerminalPane from './terminal-pane.svelte';
   import UtilityPane from './utility-pane.svelte';
+  import LoadingPane from './loading-pane.svelte';
 
   const controller = new WorkspaceController();
   const isMobile = new IsMobile();
@@ -40,6 +42,8 @@
   let tabToDelete = $state<Tab | null>(null);
   let sessionDeleteOpen = $state(false);
   let tabDeleteOpen = $state(false);
+  let signOutConfirmOpen = $state(false);
+  let aboutOpen = $state(false);
 
   function openCreateSessionDialog() {
     sessionDialogMode = 'create';
@@ -75,17 +79,13 @@
     tabDeleteOpen = true;
   }
 
-  $effect(() => {
-    if (!sessionDeleteOpen) {
-      sessionToDelete = null;
-    }
-  });
+  function requestSignOut() {
+    signOutConfirmOpen = true;
+  }
 
-  $effect(() => {
-    if (!tabDeleteOpen) {
-      tabToDelete = null;
-    }
-  });
+  function openAbout() {
+    aboutOpen = true;
+  }
 
   async function submitSession(name: string) {
     if (sessionDialogMode === 'create') {
@@ -135,26 +135,26 @@
       onCreateSession={openCreateSessionDialog}
       onRenameSession={openRenameSessionDialog}
       onDeleteSession={requestSessionDelete}
+      onOpenAbout={openAbout}
+      onSignOut={requestSignOut}
     />
 
-    <Sidebar.Inset class="h-dvh min-h-0 overflow-hidden bg-transparent shadow-none">
+    <Sidebar.Inset class="h-dvh min-h-0 overflow-hidden bg-black shadow-none">
       <AppToolbar
         {controller}
         onCreateTab={openCreateTabDialog}
         onRenameTab={openRenameTabDialog}
         onDeleteTab={requestTabDelete}
         onToggleCommand={() => (commandOpen = true)}
-        onSignOut={() => authStore.signOut()}
       />
 
       <div class="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden p-3 sm:p-4">
         {#if controller.isWorkspaceLoading}
-          <div class="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-            <Skeleton class="min-h-[32rem] rounded-lg" />
-            <div class="hidden gap-4 lg:grid">
-              <Skeleton class="h-48 rounded-lg" />
-              <Skeleton class="h-full rounded-lg" />
-            </div>
+          <div class="relative min-h-0 flex-1 overflow-hidden bg-black">
+            <LoadingPane
+              title="Loading workspace"
+              description="Restoring sessions, tabs, and terminal state."
+            />
           </div>
         {:else if controller.sessions.length === 0}
           <Empty class="min-h-0 flex-1 border-0 bg-transparent">
@@ -190,41 +190,44 @@
           <div class="relative min-h-0 flex-1 overflow-hidden">
             {#if isMobile.current}
               <div class="flex h-full min-h-0 flex-1 overflow-hidden">
-                <TerminalPane
-                  {controller}
-                  sessionId={controller.activeSessionId}
-                  tabId={controller.activeTabId}
-                />
-              </div>
-            {:else}
-              <div class="h-full min-h-0 overflow-hidden">
-                {#if controller.utilityPaneOpen}
-                  <ResizablePaneGroup direction="horizontal" class="gap-4">
-                    <ResizablePane defaultSize={68} minSize={48}>
-                      <TerminalPane
-                        {controller}
-                        sessionId={controller.activeSessionId}
-                        tabId={controller.activeTabId}
-                      />
-                    </ResizablePane>
-                    <ResizableHandle class="bg-border/60 hover:bg-primary/40 w-px transition-colors" />
-                    <ResizablePane defaultSize={32} minSize={24} maxSize={42}>
-                      <UtilityPane {controller} mode="desktop" />
-                    </ResizablePane>
-                  </ResizablePaneGroup>
-                {:else}
+                {#key `${controller.activeSessionId}-${controller.activeTabId}`}
                   <TerminalPane
                     {controller}
                     sessionId={controller.activeSessionId}
                     tabId={controller.activeTabId}
                   />
-                {/if}
+                {/key}
+              </div>
+            {:else}
+              <div class="h-full min-h-0 overflow-hidden">
+                <ResizablePaneGroup direction="horizontal" class="gap-4">
+                  <ResizablePane
+                    defaultSize={controller.utilityPaneOpen ? 68 : 100}
+                    minSize={48}
+                  >
+                    {#key `${controller.activeSessionId}-${controller.activeTabId}`}
+                      <TerminalPane
+                        {controller}
+                        sessionId={controller.activeSessionId}
+                        tabId={controller.activeTabId}
+                      />
+                    {/key}
+                  </ResizablePane>
+                  {#if controller.utilityPaneOpen}
+                    <ResizableHandle class="bg-border/60 hover:bg-primary/40 w-px transition-colors" />
+                    <ResizablePane defaultSize={32} minSize={24} maxSize={42}>
+                      <UtilityPane {controller} mode="desktop" />
+                    </ResizablePane>
+                  {/if}
+                </ResizablePaneGroup>
               </div>
             {/if}
           </div>
         {/if}
       </div>
     </Sidebar.Inset>
+
+    <FilesDrawer {controller} />
   </div>
 
   <UtilityPane {controller} mode="mobile" />
@@ -254,8 +257,32 @@
   onSubmit={submitTab}
 />
 
+<Dialog.Root bind:open={aboutOpen}>
+  <Dialog.Content class="sm:max-w-md">
+    <Dialog.Header>
+      <Dialog.Title>About Cloudshell</Dialog.Title>
+      <Dialog.Description>
+        Cloudshell gives you isolated sessions with per-tab terminal state on a shared workstation.
+      </Dialog.Description>
+    </Dialog.Header>
+
+    <div class="text-muted-foreground space-y-3 text-sm">
+      <p>Each session runs as its own isolated runtime.</p>
+      <p>Each tab keeps its own terminal state inside that session.</p>
+      <p>The shared workstation stays available across all of your sessions.</p>
+    </div>
+
+    <Dialog.Footer class="mt-4">
+      <Button variant="outline" onclick={() => (aboutOpen = false)}>Close</Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>
+
 <DestructiveConfirm
   bind:open={sessionDeleteOpen}
+  onOpenChange={(open: boolean) => {
+    if (!open) sessionToDelete = null;
+  }}
   title="Delete session?"
   description={
     sessionToDelete
@@ -274,6 +301,9 @@
 
 <DestructiveConfirm
   bind:open={tabDeleteOpen}
+  onOpenChange={(open: boolean) => {
+    if (!open) tabToDelete = null;
+  }}
   title="Close tab?"
   description={
     tabToDelete
@@ -287,5 +317,15 @@
       tabToDelete = null;
       tabDeleteOpen = false;
     }
+  }}
+/>
+
+<DestructiveConfirm
+  bind:open={signOutConfirmOpen}
+  title="Sign out?"
+  description="You’ll leave this workspace and need to sign in again to reconnect."
+  confirmLabel="Sign out"
+  onConfirm={async () => {
+    await authStore.signOut();
   }}
 />

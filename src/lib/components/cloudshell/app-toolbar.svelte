@@ -1,5 +1,5 @@
 <script lang="ts">
-  import LogOut from '@lucide/svelte/icons/log-out';
+  import FolderOpen from '@lucide/svelte/icons/folder-open';
   import Search from '@lucide/svelte/icons/search';
   import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
   import { Button } from '$lib/components/ui/button';
@@ -14,72 +14,111 @@
     onRenameTab,
     onDeleteTab,
     onToggleCommand,
-    onSignOut,
   }: {
     controller: WorkspaceController;
     onCreateTab: () => void;
     onRenameTab: (tab: Tab) => void;
     onDeleteTab: (tab: Tab) => void;
     onToggleCommand: () => void;
-    onSignOut: () => void;
   } = $props();
 </script>
 
-<header class="bg-background sticky top-0 z-30">
-  <div class="flex min-h-16 items-end gap-3 border-b border-border/40 px-3 pt-2">
-    <div class="flex min-w-0 flex-1 items-end gap-2 overflow-hidden">
-      <SidebarTrigger class="thumb-icon-target hit-area-2 mb-px shrink-0 rounded-lg" />
+{#snippet SidebarToggle()}
+  <SidebarTrigger class="thumb-icon-target hit-area-2 shrink-0 rounded-lg" />
+{/snippet}
 
-      {#if controller.sessions.length > 0}
-        <TabStrip
-          {controller}
-          inline
-          {onCreateTab}
-          {onRenameTab}
-          {onDeleteTab}
-        />
-      {/if}
+{#snippet FilesButton()}
+  <Button
+    size="icon"
+    variant={controller.filesDrawerOpen ? 'default' : 'ghost'}
+    class="thumb-icon-target hit-area-2 rounded-xl"
+    aria-label={controller.filesDrawerOpen ? 'Close files' : 'Open files'}
+    title={controller.filesDrawerOpen ? 'Close files' : 'Open files'}
+    onclick={() => void controller.toggleFilesDrawer()}
+  >
+    <FolderOpen />
+    <span class="sr-only">{controller.filesDrawerOpen ? 'Close files' : 'Open files'}</span>
+  </Button>
+{/snippet}
+
+{#snippet ToolbarActions()}
+  <Button
+    size="icon"
+    variant="ghost"
+    class="thumb-icon-target hit-area-2 rounded-xl"
+    aria-label="Open command palette"
+    title="Open command palette"
+    onclick={onToggleCommand}
+  >
+    <Search />
+    <span class="sr-only">Open command palette</span>
+  </Button>
+
+  <Button
+    size="icon"
+    variant={controller.utilityPaneOpen ? 'default' : 'outline'}
+    class="thumb-icon-target hit-area-2 rounded-xl"
+    aria-label={controller.utilityPaneOpen ? 'Close settings' : 'Open settings'}
+    title={controller.utilityPaneOpen ? 'Close settings' : 'Open settings'}
+    onclick={() =>
+      controller.utilityPaneOpen
+        ? controller.closeUtilityPane()
+        : controller.openUtilityPane(controller.utilityPaneTab)
+    }
+  >
+    <SlidersHorizontal />
+  </Button>
+{/snippet}
+
+{#snippet InlineTabStrip()}
+  <TabStrip
+    {controller}
+    inline
+    {onCreateTab}
+    {onRenameTab}
+    {onDeleteTab}
+  />
+{/snippet}
+
+<header class="bg-background sticky top-0 z-30 border-b border-border/40">
+  <div class="md:hidden">
+    <div class="flex min-h-16 items-center justify-between gap-3 border-b border-border/40 px-3">
+      <div class="flex items-center gap-2">
+        {@render SidebarToggle()}
+        {@render FilesButton()}
+      </div>
+
+      <div class="flex shrink-0 items-center justify-end gap-2">
+        {@render ToolbarActions()}
+      </div>
     </div>
 
-    <div class="flex shrink-0 items-center justify-end gap-2 self-end pb-2">
-      <Button
-        size="icon"
-        variant={controller.utilityPaneOpen ? 'default' : 'outline'}
-        class="thumb-icon-target hit-area-2 rounded-xl"
-        aria-label={controller.utilityPaneOpen ? 'Close settings' : 'Open settings'}
-        title={controller.utilityPaneOpen ? 'Close settings' : 'Open settings'}
-        onclick={() =>
-          controller.utilityPaneOpen
-            ? controller.closeUtilityPane()
-            : controller.openUtilityPane(controller.utilityPaneTab)
-        }
-      >
-        <SlidersHorizontal />
-      </Button>
+    {#if controller.sessions.length > 0}
+      <div class="border-b border-border/40 px-3 pt-2">
+        {@render InlineTabStrip()}
+      </div>
+    {/if}
+  </div>
 
-      <Button
-        size="icon"
-        variant="outline"
-        class="thumb-icon-target hit-area-2 rounded-xl"
-        aria-label="Open command palette"
-        title="Open command palette"
-        onclick={onToggleCommand}
-      >
-        <Search />
-        <span class="sr-only">Open command palette</span>
-      </Button>
+  <div class="hidden md:block">
+    <div class="flex min-h-16 items-end gap-3 border-b border-border/40 px-3 pt-2">
+      <div class="flex min-w-0 flex-1 items-end gap-2 overflow-visible">
+        <div class="mb-px">
+          {@render SidebarToggle()}
+        </div>
 
-      <Button
-        size="icon"
-        variant="outline"
-        class="thumb-icon-target hit-area-2 rounded-xl"
-        aria-label="Logout"
-        title="Logout"
-        onclick={onSignOut}
-      >
-        <LogOut />
-        <span class="sr-only">Logout</span>
-      </Button>
+        <div class="mb-px">
+          {@render FilesButton()}
+        </div>
+
+        {#if controller.sessions.length > 0}
+          {@render InlineTabStrip()}
+        {/if}
+      </div>
+
+      <div class="flex shrink-0 items-center justify-end gap-2 self-end pb-2">
+        {@render ToolbarActions()}
+      </div>
     </div>
   </div>
 </header>

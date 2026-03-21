@@ -3,9 +3,8 @@
   import { onMount } from 'svelte';
   import AlertCircle from '@lucide/svelte/icons/alert-circle';
   import '@xterm/xterm/css/xterm.css';
-  import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '$lib/components/ui/empty';
-  import { Spinner } from '$lib/components/ui/spinner';
-  import type { WorkspaceController } from '$lib/cloudshell/workspace-controller.svelte';
+import type { WorkspaceController } from '$lib/cloudshell/workspace-controller.svelte';
+import LoadingPane from './loading-pane.svelte';
 
   let {
     controller,
@@ -273,15 +272,6 @@
       disposeResize?.();
     };
   });
-
-  $effect(() => {
-    sessionId;
-    tabId;
-
-    if (browser && terminal && sessionId && tabId) {
-      void reconnectTerminal();
-    }
-  });
 </script>
 
 {#if sessionId && tabId}
@@ -295,20 +285,18 @@
     ></div>
 
     {#if controller.terminalStatus !== 'connected'}
-      <div
-        class="bg-background/80 absolute inset-0 z-10 flex items-center justify-center backdrop-blur-[1px]"
-        aria-live="polite"
-      >
-        <div class="bg-card flex max-w-xs flex-col items-center gap-3 rounded-md border px-4 py-4 text-center shadow-none">
-          {#if controller.terminalStatus === 'connecting'}
-            <Spinner />
-            <div class="space-y-1">
-              <div class="text-sm font-medium">Attaching terminal</div>
-              <p class="text-muted-foreground text-sm">
-                Starting the active shell and restoring its session state.
-              </p>
-            </div>
-          {:else}
+      {#if controller.terminalStatus === 'connecting'}
+        <LoadingPane
+          overlay
+          title="Attaching terminal"
+          description="Starting the active shell and restoring its session state."
+        />
+      {:else}
+        <div
+          class="bg-background/80 absolute inset-0 z-10 flex items-center justify-center backdrop-blur-[1px]"
+          aria-live="polite"
+        >
+          <div class="bg-card flex max-w-xs flex-col items-center gap-3 rounded-md border px-4 py-4 text-center shadow-none">
             <AlertCircle class="text-destructive size-5" />
             <div class="space-y-1">
               <div class="text-sm font-medium">Terminal unavailable</div>
@@ -316,21 +304,16 @@
                 {controller.terminalError || 'The terminal could not connect.'}
               </p>
             </div>
-          {/if}
+          </div>
         </div>
-      </div>
+      {/if}
     {/if}
   </div>
 {:else}
-  <Empty class="bg-card h-full rounded-lg border">
-    <EmptyHeader>
-      <EmptyMedia>
-        <Spinner />
-      </EmptyMedia>
-      <EmptyTitle>Preparing workspace</EmptyTitle>
-      <EmptyDescription>
-        Waiting for the active session and tab to resolve before attaching the terminal.
-      </EmptyDescription>
-    </EmptyHeader>
-  </Empty>
+  <div class="flex h-full min-h-0 flex-1" style:background={TERMINAL_BACKGROUND}>
+    <LoadingPane
+      title="Preparing workspace"
+      description="Waiting for the active session and tab to resolve before attaching the terminal."
+    />
+  </div>
 {/if}

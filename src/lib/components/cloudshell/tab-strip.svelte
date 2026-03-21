@@ -5,10 +5,10 @@
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import { Button } from '$lib/components/ui/button';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-  import { Skeleton } from '$lib/components/ui/skeleton';
   import * as Tabs from '$lib/components/ui/tabs';
   import type { WorkspaceController } from '$lib/cloudshell/workspace-controller.svelte';
   import type { Tab } from '$lib/cloudshell/types';
+  import LoadingPane from './loading-pane.svelte';
 
   let {
     controller,
@@ -25,7 +25,7 @@
   } = $props();
 </script>
 
-<div class:bg-background={!inline} class={`flex items-end gap-2 ${inline ? 'min-w-0 flex-1 overflow-hidden' : 'border-b px-1 pt-2'}`}>
+<div class:bg-background={!inline} class={`flex items-end gap-2 ${inline ? 'min-w-0 flex-1 overflow-visible' : 'border-b px-1 pt-2'}`}>
   <div class="shrink-0 pb-px">
     <Button
       size="icon"
@@ -40,10 +40,8 @@
 
   <div class="min-w-0 flex-1">
     {#if controller.isWorkspaceLoading}
-      <div class="flex gap-2">
-        {#each Array.from({ length: 3 }) as _, index (index)}
-          <Skeleton class="h-9 w-32 rounded-md" />
-        {/each}
+      <div class="flex min-h-11 items-center">
+        <LoadingPane compact />
       </div>
     {:else}
       <Tabs.Root value={controller.activeTabId} class="min-w-0">
@@ -53,13 +51,17 @@
               <div
                 class={`tab-shell group -mb-px min-w-0 max-w-64 ${
                   tab.id === controller.activeTabId
-                    ? 'bg-background z-10'
-                    : 'bg-muted/25 border-border/90 hover:bg-muted/35'
+                    ? 'tab-shell--active z-10'
+                    : 'tab-shell--inactive'
                 }`}
               >
                 <Tabs.Trigger
                   value={tab.id}
-                  class="hit-area-y-2 h-auto min-w-0 flex-1 justify-start rounded-t-md rounded-b-none border-0 px-4 py-2.5 text-left after:hidden data-active:bg-transparent"
+                  class={`hit-area-y-2 h-auto min-w-0 flex-1 justify-start rounded-t-md rounded-b-none border-0 px-4 py-2.5 text-left after:hidden data-active:bg-transparent ${
+                    tab.id === controller.activeTabId
+                      ? 'font-semibold text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
                   onclick={() => controller.setActiveTab(tab.id)}
                 >
                   <span class="truncate">{tab.name}</span>
@@ -67,7 +69,11 @@
 
                 <DropdownMenu.Root>
                   <DropdownMenu.Trigger
-                    class="text-muted-foreground hover:bg-muted hover:text-foreground hit-area-2 inline-flex size-9 shrink-0 items-center justify-center rounded-md opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                    class={`hit-area-2 inline-flex size-9 shrink-0 items-center justify-center rounded-md transition-opacity ${
+                      tab.id === controller.activeTabId
+                        ? 'text-foreground/80 hover:bg-white/6 hover:text-foreground opacity-100'
+                        : 'text-muted-foreground hover:bg-white/6 hover:text-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+                    }`}
                   >
                     <MoreHorizontal class="size-4" />
                     <span class="sr-only">Tab actions</span>
@@ -94,6 +100,7 @@
       </Tabs.Root>
     {/if}
   </div>
+
 </div>
 
 <style>
@@ -112,20 +119,30 @@
     overflow: hidden;
     border-top-left-radius: calc(var(--radius) - 2px);
     border-top-right-radius: calc(var(--radius) - 2px);
-    border-left: 1px solid hsl(var(--border));
-    border-right: 1px solid hsl(var(--border));
-    border-top: 1px solid hsl(var(--border));
+    border-left: 1px solid transparent;
+    border-right: 1px solid transparent;
+    border-top: 1px solid transparent;
     padding-right: 0.25rem;
+    transition:
+      background-color 140ms ease,
+      border-color 140ms ease;
   }
 
-  .tab-shell::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    right: 0;
-    left: 0;
-    height: 1px;
-    background: hsl(var(--border));
-    pointer-events: none;
+  .tab-shell--active {
+    background: rgba(255, 255, 255, 0.05);
+    border-left-color: rgba(255, 255, 255, 0.08);
+    border-right-color: rgba(255, 255, 255, 0.08);
+    border-top-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .tab-shell--inactive {
+    background: rgba(255, 255, 255, 0.03);
+    border-left-color: rgba(255, 255, 255, 0.035);
+    border-right-color: rgba(255, 255, 255, 0.035);
+    border-top-color: rgba(255, 255, 255, 0.035);
+  }
+
+  .tab-shell--inactive:hover {
+    background: rgba(255, 255, 255, 0.04);
   }
 </style>

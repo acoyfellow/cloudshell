@@ -26,12 +26,6 @@
   let name = $state('');
   let isSubmitting = $state(false);
 
-  $effect(() => {
-    if (open) {
-      name = initialName;
-    }
-  });
-
   async function handleSubmit() {
     if (!name.trim() || isSubmitting) {
       return;
@@ -49,7 +43,12 @@
   }
 </script>
 
-<Dialog.Root bind:open>
+<Dialog.Root
+  bind:open
+  onOpenChange={(isOpen) => {
+    if (isOpen) name = initialName;
+  }}
+>
   <Dialog.Content class="sm:max-w-md">
     <Dialog.Header>
       <Dialog.Title>{title}</Dialog.Title>

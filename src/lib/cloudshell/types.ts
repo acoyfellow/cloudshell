@@ -18,11 +18,20 @@ export interface SessionPort {
   createdAt: number;
 }
 
-export interface FileMetadata {
+export interface FileRecord {
   name: string;
+  path: string;
   size: number;
   modifiedAt: number;
+}
+
+export interface FileTreeNode {
+  type: 'file' | 'folder';
+  name: string;
   path: string;
+  size?: number;
+  modifiedAt?: number;
+  children?: FileTreeNode[];
 }
 
 export interface SSHKey {

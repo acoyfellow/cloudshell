@@ -136,6 +136,35 @@ func userHomeDir(username string) string {
 	return filepath.Join("/home/user", username)
 }
 
+func sanitizeRelativePath(input string) string {
+	trimmed := strings.TrimSpace(input)
+	trimmed = strings.Trim(trimmed, "/")
+	if trimmed == "" {
+		return ""
+	}
+
+	parts := strings.Split(trimmed, "/")
+	clean := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" || part == "." || part == ".." {
+			continue
+		}
+		clean = append(clean, part)
+	}
+
+	return strings.Join(clean, "/")
+}
+
+func userFilePath(username string, relativePath string) string {
+	clean := sanitizeRelativePath(relativePath)
+	if clean == "" {
+		return userHomeDir(username)
+	}
+
+	return filepath.Join(userHomeDir(username), filepath.FromSlash(clean))
+}
+
 func sessionRuntimeDir(username string, sessionID string) string {
 	return filepath.Join(
 		userHomeDir(username),
@@ -579,6 +608,42 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(health)
 }
 
+func fileStatHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	username := r.Header.Get("X-User")
+	if username == "" {
+		username = "default"
+	}
+
+	targetPath := userFilePath(username, r.URL.Query().Get("path"))
+	info, err := os.Stat(targetPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			w.WriteHeader(http.StatusNotFound)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]bool{"exists": false})
+			return
+		}
+
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]bool{"exists": false})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"exists":     true,
+		"isDir":      info.IsDir(),
+		"size":       info.Size(),
+		"modifiedAt": info.ModTime().UnixMilli(),
+	})
+}
+
 func checkFuseMount() bool {
 	if _, err := os.Stat("/home/user/.ash_history"); err == nil {
 		return true
@@ -801,6 +866,7 @@ func main() {
 	mux.HandleFunc("/api/tab/delete", deleteTabHandler)
 	mux.HandleFunc("/api/session/checkpoint", checkpointSessionHandler)
 	mux.HandleFunc("/api/session/delete", deleteSessionHandler)
+	mux.HandleFunc("/api/files/stat", fileStatHandler)
 	mux.HandleFunc("/api/recording/start", startRecordingHandler)
 	mux.HandleFunc("/api/recording/stop", stopRecordingHandler)
 	mux.HandleFunc("/api/recording/get", getRecordingHandler)
