@@ -59,11 +59,13 @@
           <span>Create session</span>
           <CommandShortcut>⇧⌘S</CommandShortcut>
         </CommandItem>
-        <CommandItem onSelect={() => closeAnd(onCreateTab)}>
-          <Plus />
-          <span>Create tab</span>
-          <CommandShortcut>⇧⌘T</CommandShortcut>
-        </CommandItem>
+        {#if controller.activeSessionId}
+          <CommandItem onSelect={() => closeAnd(onCreateTab)}>
+            <Plus />
+            <span>Create tab</span>
+            <CommandShortcut>⇧⌘T</CommandShortcut>
+          </CommandItem>
+        {/if}
         <CommandItem onSelect={() => closeAnd(() => controller.backupWorkspace())}>
           <RefreshCw />
           <span>Checkpoint workspace</span>

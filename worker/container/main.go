@@ -192,6 +192,29 @@ func tmuxHasSession(sessionName string) bool {
 	return exec.Command("tmux", "has-session", "-t", sessionName).Run() == nil
 }
 
+func tmuxDefaultCommands() [][]string {
+	return [][]string{
+		{"start-server"},
+		{"set-option", "-g", "status", "off"},
+	}
+}
+
+func applyTmuxDefaults() {
+	for _, args := range tmuxDefaultCommands() {
+		output, err := exec.Command("tmux", args...).CombinedOutput()
+		if err == nil {
+			continue
+		}
+
+		trimmed := strings.TrimSpace(string(output))
+		if trimmed != "" {
+			log.Printf("Failed to apply tmux defaults (%s): %v (%s)", strings.Join(args, " "), err, trimmed)
+		} else {
+			log.Printf("Failed to apply tmux defaults (%s): %v", strings.Join(args, " "), err)
+		}
+	}
+}
+
 func ensureSessionDirs(username string, sessionID string) error {
 	sessionDir := sessionRuntimeDir(username, sessionID)
 	return os.MkdirAll(filepath.Join(sessionDir, "tabs"), 0755)
@@ -281,6 +304,7 @@ func saveTabState(username string, sessionID string, tabID string) bool {
 }
 
 func restoreTmuxSession(state SessionState) {
+	applyTmuxDefaults()
 	exec.Command("tmux", "new-session", "-Ad", "-s", state.SessionName).Run()
 	if state.Cwd != "" {
 		exec.Command("tmux", "send-keys", "-t", state.SessionName, fmt.Sprintf("cd %s", state.Cwd), "Enter").Run()
@@ -426,6 +450,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	log.Printf("WebSocket connection established for %s/%s/%s", username, sessionID, tabID)
 
 	sessionName := tmuxSessionName(tabID)
+	applyTmuxDefaults()
 
 	cmd := exec.Command("tmux", "new-session", "-A", "-s", sessionName)
 	cmd.Dir = userHome

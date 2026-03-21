@@ -75,3 +75,29 @@ func TestTabStatePath(t *testing.T) {
 		t.Fatalf("tabStatePath = %q, want %q", got, want)
 	}
 }
+
+func TestTmuxDefaultCommands(t *testing.T) {
+	t.Parallel()
+
+	got := tmuxDefaultCommands()
+	want := [][]string{
+		{"start-server"},
+		{"set-option", "-g", "status", "off"},
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("tmuxDefaultCommands len = %d, want %d", len(got), len(want))
+	}
+
+	for i := range want {
+		if len(got[i]) != len(want[i]) {
+			t.Fatalf("tmuxDefaultCommands[%d] len = %d, want %d", i, len(got[i]), len(want[i]))
+		}
+
+		for j := range want[i] {
+			if got[i][j] != want[i][j] {
+				t.Fatalf("tmuxDefaultCommands[%d][%d] = %q, want %q", i, j, got[i][j], want[i][j])
+			}
+		}
+	}
+}

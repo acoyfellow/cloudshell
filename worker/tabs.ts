@@ -121,10 +121,11 @@ export function parseStoredSessions(serialized: string | null): Session[] {
 
     const record = candidate as Partial<Record<keyof Session, unknown>>;
     const id = normalizeRequestedWorkspaceId(typeof record.id === 'string' ? record.id : null);
-    const lastActiveTabId = normalizeRequestedTabId(
-      typeof record.lastActiveTabId === 'string' ? record.lastActiveTabId : null
-    );
-    if (!id || !lastActiveTabId) {
+    const rawLastActiveTabId =
+      typeof record.lastActiveTabId === 'string' ? record.lastActiveTabId.trim() : '';
+    const lastActiveTabId =
+      rawLastActiveTabId === '' ? '' : normalizeRequestedTabId(rawLastActiveTabId);
+    if (!id || lastActiveTabId == null) {
       return;
     }
 
@@ -360,7 +361,7 @@ export function resolveTab(
   return tabs.find((tab) => tab.id === session.lastActiveTabId) || tabs[0];
 }
 
-export async function ensureWorkspaceInitialized(
+export async function loadWorkspaceSessions(
   kv: WorkspaceKVNamespace,
   username: string
 ): Promise<Session[]> {
@@ -386,13 +387,7 @@ export async function ensureWorkspaceInitialized(
       return sessions;
     }
 
-    const session = createStoredSession([]);
-    const tab = createStoredTab([]);
-    session.lastActiveTabId = tab.id;
-    sessions = [session];
-    await putStoredSessions(kv, username, sessions);
-    await putStoredTabs(kv, username, session.id, [tab]);
-    return sessions;
+    return [];
   }
 
   let sessionsChanged = false;
@@ -401,10 +396,10 @@ export async function ensureWorkspaceInitialized(
     let tabs = await getStoredTabs(kv, username, session.id);
 
     if (tabs.length === 0) {
-      tabs = [createStoredTab([])];
-      await putStoredTabs(kv, username, session.id, tabs);
-      session.lastActiveTabId = tabs[0].id;
-      sessionsChanged = true;
+      if (session.lastActiveTabId !== '') {
+        session.lastActiveTabId = '';
+        sessionsChanged = true;
+      }
       continue;
     }
 

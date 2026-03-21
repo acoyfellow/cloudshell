@@ -10,9 +10,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
-  quality:
-    name: Quality Checks
+  check:
+    name: Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,78 +25,19 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Install dependencies
+      - name: Install
         run: bun install --frozen-lockfile
 
-      - name: Run Svelte + TypeScript checks
+      - name: Svelte + TypeScript
         run: bun run check
 
-  unit-tests:
-    name: Unit Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Run unit tests
+      - name: Test
         run: bun run test
 
-  build:
-    name: Production Build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Build app
+      - name: Build
         run: bun run build
 
-  security-audit:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Run dependency audit
-        run: bun audit --audit-level=high || true
-
-  license-check:
-    name: License Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Check licenses
+      - name: License check
         run: >
           bunx license-checker
           --production
@@ -102,8 +46,8 @@ jobs:
           'MIT;Apache-2.0;BSD-3-Clause;BSD-2-Clause;ISC;MIT-0;0BSD;MIT OR Apache-2.0;BlueOak-1.0.0;LGPL-3.0-or-later;MPL-2.0;CC0-1.0;(MIT OR GPL-3.0-or-later);(MIT AND Zlib);MIT*'
 
   deploy:
-    name: Deploy to Production
-    needs: [quality, unit-tests, build, security-audit, license-check]
+    name: Deploy
+    needs: check
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
@@ -114,10 +58,10 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Install dependencies
+      - name: Install
         run: bun install --frozen-lockfile
 
-      - name: Deploy to Cloudflare
+      - name: Deploy
         env:
           ALCHEMY_CI_STATE_STORE_CHECK: 'false'
           ALCHEMY_PASSWORD: ${{ secrets.ALCHEMY_PASSWORD }}

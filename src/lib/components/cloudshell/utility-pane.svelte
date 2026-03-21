@@ -29,11 +29,9 @@
 
 {#snippet UtilityContent()}
   <div class="bg-card flex h-full min-h-0 flex-col rounded-lg border shadow-none">
-    <div class="flex items-center justify-between gap-3 border-b px-4 py-3">
+    <div class="flex items-start justify-between gap-3 px-4 py-4">
       <div class="flex min-w-0 items-center gap-3">
-        <div class="bg-muted text-foreground flex size-9 items-center justify-center rounded-md border">
-          <PanelRightOpen class="size-4" />
-        </div>
+        <PanelRightOpen class="text-muted-foreground size-4 shrink-0" />
         <div class="min-w-0">
           <div class="font-medium">Utility workspace</div>
           <div class="text-muted-foreground text-xs">Files, ports, and workstation tools</div>
@@ -49,12 +47,12 @@
     </div>
 
     <Tabs.Root value={controller.utilityPaneTab} class="min-h-0 flex-1">
-      <div class="border-b px-4 py-3">
-        <Tabs.List variant="line" class="w-full justify-start gap-2 bg-transparent p-0">
+      <div class="px-4">
+        <Tabs.List variant="line" class="w-full justify-start gap-4 bg-transparent p-0">
           {#each utilityTabs as tab}
             <Tabs.Trigger
               value={tab.value}
-              class="rounded-md border bg-background px-3 py-2"
+              class="rounded-none border-0 bg-transparent px-0 py-2.5"
               onclick={() => controller.setUtilityPaneTab(tab.value)}
             >
               <tab.icon class="size-4" />
@@ -64,13 +62,13 @@
         </Tabs.List>
       </div>
 
-      <Tabs.Content value="files" class="min-h-0 flex-1 px-4 py-4">
+      <Tabs.Content value="files" class="min-h-0 flex-1 px-4 pt-5 pb-4">
         <FilesPanel {controller} />
       </Tabs.Content>
-      <Tabs.Content value="ports" class="min-h-0 flex-1 px-4 py-4">
+      <Tabs.Content value="ports" class="min-h-0 flex-1 px-4 pt-5 pb-4">
         <PortsPanel {controller} />
       </Tabs.Content>
-      <Tabs.Content value="tools" class="min-h-0 flex-1 px-4 py-4">
+      <Tabs.Content value="tools" class="min-h-0 flex-1 px-4 pt-5 pb-4">
         <ToolsPanel {controller} />
       </Tabs.Content>
     </Tabs.Root>

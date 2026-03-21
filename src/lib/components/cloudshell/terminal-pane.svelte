@@ -17,6 +17,8 @@
     tabId: string;
   } = $props();
 
+  const TERMINAL_BACKGROUND = '#000000';
+
   let terminalElement = $state<HTMLDivElement | null>(null);
   let socket: WebSocket | null = null;
   let terminal: any = null;
@@ -201,7 +203,7 @@
       fontFamily: '"IBM Plex Mono", "SFMono-Regular", ui-monospace, monospace',
       fontSize: 13,
       theme: {
-        background: '#111111',
+        background: TERMINAL_BACKGROUND,
         foreground: '#f2efe8',
         cursor: '#f7f4ed',
         selectionBackground: '#6b7cff33',
@@ -283,10 +285,13 @@
 </script>
 
 {#if sessionId && tabId}
-  <div class="bg-card relative flex h-full min-h-0 flex-1 overflow-hidden rounded-lg border shadow-none">
+<div
+  class="relative flex h-full min-h-0 flex-1 overflow-hidden rounded-none shadow-none"
+  style:background={TERMINAL_BACKGROUND}
+>
     <div
       bind:this={terminalElement}
-      class="absolute inset-0 min-h-0 min-w-0 overflow-hidden px-2 py-2 sm:px-3 sm:py-3"
+      class="absolute inset-0 min-h-0 min-w-0 overflow-hidden"
     ></div>
 
     {#if controller.terminalStatus !== 'connected'}

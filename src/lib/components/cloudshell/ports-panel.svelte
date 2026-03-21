@@ -2,13 +2,6 @@
   import Cable from '@lucide/svelte/icons/cable';
   import ExternalLink from '@lucide/svelte/icons/external-link';
   import Plus from '@lucide/svelte/icons/plus';
-  import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-  } from '$lib/components/ui/card';
   import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '$lib/components/ui/empty';
   import { InputGroup, InputGroupButton, InputGroupInput } from '$lib/components/ui/input-group';
   import { ScrollArea } from '$lib/components/ui/scroll-area';
@@ -31,14 +24,14 @@
 </script>
 
 <div class="flex h-full flex-col gap-4">
-  <Card class="bg-card shadow-none">
-    <CardHeader>
-      <CardTitle>Expose a port</CardTitle>
-      <CardDescription>
+  <section class="space-y-3">
+    <div class="space-y-1">
+      <h3 class="text-base font-semibold">Expose a port</h3>
+      <p class="text-muted-foreground text-sm">
         Attach a public edge URL to a process running inside the active session.
-      </CardDescription>
-    </CardHeader>
-    <CardContent>
+      </p>
+    </div>
+    <div>
       <InputGroup class="h-10">
         <InputGroupInput
           bind:value={portInput}
@@ -55,15 +48,15 @@
           <span>Add</span>
         </InputGroupButton>
       </InputGroup>
-    </CardContent>
-  </Card>
+    </div>
+  </section>
 
-  <Card class="bg-card min-h-0 flex-1 shadow-none">
-    <CardHeader>
-      <CardTitle>Forwarded ports</CardTitle>
-      <CardDescription>Each session keeps its own isolated port forwarding map.</CardDescription>
-    </CardHeader>
-    <CardContent class="min-h-0 flex-1">
+  <section class="min-h-0 flex-1 space-y-3">
+    <div class="space-y-1">
+      <h3 class="text-base font-semibold">Forwarded ports</h3>
+      <p class="text-muted-foreground text-sm">Each session keeps its own isolated port forwarding map.</p>
+    </div>
+    <div class="min-h-0 flex-1">
       {#if controller.isPortsLoading}
         <div class="space-y-3">
           {#each Array.from({ length: 4 }) as _, index (index)}
@@ -107,6 +100,6 @@
           </div>
         </ScrollArea>
       {/if}
-    </CardContent>
-  </Card>
+    </div>
+  </section>
 </div>

@@ -63,6 +63,27 @@ export class WorkspaceController {
     return this.utilityPaneOpen;
   }
 
+  private resetWorkspaceSelection() {
+    this.tabs = [];
+    this.ports = [];
+    this.activeSessionId = '';
+    this.activeTabId = '';
+    this.utilityPaneOpen = false;
+    this.setTerminalStatus('disconnected');
+  }
+
+  private resetWorkspaceData() {
+    this.resetWorkspaceSelection();
+    this.sessions = [];
+    this.files = [];
+    this.sshKeys = [];
+    this.shareLink = '';
+    this.shareLookup = null;
+    if (browser) {
+      window.localStorage.removeItem(ACTIVE_SESSION_KEY);
+    }
+  }
+
   private async fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(`/api/cloudshell${path}`, init);
     const text = await response.text();
@@ -92,9 +113,7 @@ export class WorkspaceController {
     this.sessions = sessionData.sessions;
 
     if (this.sessions.length === 0) {
-      this.tabs = [];
-      this.activeSessionId = '';
-      this.activeTabId = '';
+      this.resetWorkspaceData();
       return;
     }
 
@@ -150,6 +169,11 @@ export class WorkspaceController {
       if (browser) {
         window.localStorage.setItem(ACTIVE_SESSION_KEY, sessionId);
       }
+
+      this.tabs = [];
+      this.ports = [];
+      this.activeTabId = '';
+      this.setTerminalStatus('disconnected');
 
       const data = await this.fetchJson<{ tabs: Tab[] }>(`/sessions/${sessionId}/tabs`);
       this.tabs = data.tabs;
@@ -290,7 +314,17 @@ export class WorkspaceController {
     );
 
     this.tabs = this.tabs.filter((tab) => tab.id !== tabId);
-    this.activeTabId = data.lastActiveTabId;
+    this.activeTabId = this.tabs.some((tab) => tab.id === data.lastActiveTabId)
+      ? data.lastActiveTabId
+      : (this.tabs[0]?.id ?? '');
+    this.sessions = this.sessions.map((session) =>
+      session.id === this.activeSessionId
+        ? { ...session, lastActiveTabId: this.activeTabId, lastOpenedAt: Date.now() }
+        : session
+    );
+    if (!this.activeTabId) {
+      this.setTerminalStatus('disconnected');
+    }
     toast.success('Tab deleted');
   }
 

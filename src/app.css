@@ -193,6 +193,152 @@
 	}
 }
 
+@utility thumb-target {
+	min-height: 2.75rem;
+	padding-inline: 1rem;
+}
+
+@utility thumb-icon-target {
+	min-width: 2.75rem;
+	min-height: 2.75rem;
+}
+
+/* hit-area: expand interactive hit areas without affecting layout (https://bazza.dev/craft/2026/hit-area) */
+@utility hit-area {
+	position: relative;
+	&::before {
+		content: "";
+		position: absolute;
+		top: var(--hit-area-t, 0);
+		right: var(--hit-area-r, 0);
+		bottom: var(--hit-area-b, 0);
+		left: var(--hit-area-l, 0);
+		pointer-events: inherit;
+	}
+}
+
+@utility hit-area-debug {
+	position: relative;
+	&::before {
+		content: "";
+		position: absolute;
+		top: var(--hit-area-t, 0);
+		right: var(--hit-area-r, 0);
+		bottom: var(--hit-area-b, 0);
+		left: var(--hit-area-l, 0);
+		pointer-events: inherit;
+		border: 1px dashed rgb(59 130 246);
+		background: rgb(59 130 246 / 0.1);
+	}
+	&:hover::before {
+		border-color: rgb(34 197 94);
+		background: rgb(34 197 94 / 0.1);
+	}
+}
+
+@utility hit-area-* {
+	position: relative;
+	--hit-area-t: calc(--spacing(--value(number)) * -1);
+	--hit-area-b: calc(--spacing(--value(number)) * -1);
+	--hit-area-l: calc(--spacing(--value(number)) * -1);
+	--hit-area-r: calc(--spacing(--value(number)) * -1);
+	&::before {
+		content: "";
+		position: absolute;
+		top: var(--hit-area-t, 0);
+		right: var(--hit-area-r, 0);
+		bottom: var(--hit-area-b, 0);
+		left: var(--hit-area-l, 0);
+		pointer-events: inherit;
+	}
+}
+
+@utility hit-area-l-* {
+	position: relative;
+	--hit-area-l: calc(--spacing(--value(number)) * -1);
+	&::before {
+		content: "";
+		position: absolute;
+		top: var(--hit-area-t, 0);
+		right: var(--hit-area-r, 0);
+		bottom: var(--hit-area-b, 0);
+		left: var(--hit-area-l, 0);
+		pointer-events: inherit;
+	}
+}
+
+@utility hit-area-r-* {
+	position: relative;
+	--hit-area-r: calc(--spacing(--value(number)) * -1);
+	&::before {
+		content: "";
+		position: absolute;
+		top: var(--hit-area-t, 0);
+		right: var(--hit-area-r, 0);
+		bottom: var(--hit-area-b, 0);
+		left: var(--hit-area-l, 0);
+		pointer-events: inherit;
+	}
+}
+
+@utility hit-area-t-* {
+	position: relative;
+	--hit-area-t: calc(--spacing(--value(number)) * -1);
+	&::before {
+		content: "";
+		position: absolute;
+		top: var(--hit-area-t, 0);
+		right: var(--hit-area-r, 0);
+		bottom: var(--hit-area-b, 0);
+		left: var(--hit-area-l, 0);
+		pointer-events: inherit;
+	}
+}
+
+@utility hit-area-b-* {
+	position: relative;
+	--hit-area-b: calc(--spacing(--value(number)) * -1);
+	&::before {
+		content: "";
+		position: absolute;
+		top: var(--hit-area-t, 0);
+		right: var(--hit-area-r, 0);
+		bottom: var(--hit-area-b, 0);
+		left: var(--hit-area-l, 0);
+		pointer-events: inherit;
+	}
+}
+
+@utility hit-area-x-* {
+	position: relative;
+	--hit-area-l: calc(--spacing(--value(number)) * -1);
+	--hit-area-r: calc(--spacing(--value(number)) * -1);
+	&::before {
+		content: "";
+		position: absolute;
+		top: var(--hit-area-t, 0);
+		right: var(--hit-area-r, 0);
+		bottom: var(--hit-area-b, 0);
+		left: var(--hit-area-l, 0);
+		pointer-events: inherit;
+	}
+}
+
+@utility hit-area-y-* {
+	position: relative;
+	--hit-area-t: calc(--spacing(--value(number)) * -1);
+	--hit-area-b: calc(--spacing(--value(number)) * -1);
+	&::before {
+		content: "";
+		position: absolute;
+		top: var(--hit-area-t, 0);
+		right: var(--hit-area-r, 0);
+		bottom: var(--hit-area-b, 0);
+		left: var(--hit-area-l, 0);
+		pointer-events: inherit;
+	}
+}
+
 @layer utilities {
 	.cloudshell-scrollbar {
 		scrollbar-width: thin;

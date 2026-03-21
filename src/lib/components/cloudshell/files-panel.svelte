@@ -3,13 +3,6 @@
   import FilesIcon from '@lucide/svelte/icons/files';
   import Upload from '@lucide/svelte/icons/upload';
   import { Button } from '$lib/components/ui/button';
-  import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-  } from '$lib/components/ui/card';
   import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '$lib/components/ui/empty';
   import { ScrollArea } from '$lib/components/ui/scroll-area';
   import { Skeleton } from '$lib/components/ui/skeleton';
@@ -39,46 +32,44 @@
 </script>
 
 <div class="flex h-full flex-col gap-4">
-  <Card class="bg-card shadow-none">
-    <CardHeader>
-      <CardTitle>Workspace files</CardTitle>
-      <CardDescription>
+  <section class="space-y-3">
+    <div class="space-y-1">
+      <h3 class="text-base font-semibold">Workspace files</h3>
+      <p class="text-muted-foreground text-sm">
         Upload artifacts to your shared user box and pull them back down from any session.
-      </CardDescription>
-    </CardHeader>
-    <CardContent>
-      <label class="bg-muted/30 hover:bg-muted/50 flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-5 py-8 text-center transition-colors">
-        <div class="bg-muted text-foreground flex size-10 items-center justify-center rounded-md border">
-          {#if controller.isFilesUploading}
-            <Spinner class="size-4" />
-          {:else}
-            <Upload class="size-4" />
-          {/if}
-        </div>
-        <div class="space-y-1">
-          <p class="text-sm font-medium">
-            {controller.isFilesUploading ? 'Uploading files…' : 'Drop files here or click to upload'}
-          </p>
-          <p class="text-muted-foreground text-xs">
-            Files are stored in your shared workstation and available across sessions.
-          </p>
-        </div>
-        <input
-          hidden
-          multiple
-          type="file"
-          onchange={(event) => controller.uploadFiles((event.currentTarget as HTMLInputElement).files)}
-        />
-      </label>
-    </CardContent>
-  </Card>
+      </p>
+    </div>
+    <label class="bg-muted/20 hover:bg-muted/35 flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-5 py-8 text-center transition-colors">
+      <div class="bg-background text-foreground flex size-10 items-center justify-center rounded-md border">
+        {#if controller.isFilesUploading}
+          <Spinner class="size-4" />
+        {:else}
+          <Upload class="size-4" />
+        {/if}
+      </div>
+      <div class="space-y-1">
+        <p class="text-sm font-medium">
+          {controller.isFilesUploading ? 'Uploading files…' : 'Drop files here or click to upload'}
+        </p>
+        <p class="text-muted-foreground text-xs">
+          Files are stored in your shared workstation and available across sessions.
+        </p>
+      </div>
+      <input
+        hidden
+        multiple
+        type="file"
+        onchange={(event) => controller.uploadFiles((event.currentTarget as HTMLInputElement).files)}
+      />
+    </label>
+  </section>
 
-  <Card class="bg-card min-h-0 flex-1 shadow-none">
-    <CardHeader>
-      <CardTitle>Recent files</CardTitle>
-      <CardDescription>Download or inspect the latest uploads from your workstation.</CardDescription>
-    </CardHeader>
-    <CardContent class="min-h-0 flex-1">
+  <section class="min-h-0 flex-1 space-y-3">
+    <div class="space-y-1">
+      <h3 class="text-base font-semibold">Recent files</h3>
+      <p class="text-muted-foreground text-sm">Download or inspect the latest uploads from your workstation.</p>
+    </div>
+    <div class="min-h-0 flex-1">
       {#if controller.isFilesLoading}
         <div class="space-y-3">
           {#each Array.from({ length: 4 }) as _, index (index)}
@@ -125,6 +116,6 @@
           </div>
         </ScrollArea>
       {/if}
-    </CardContent>
-  </Card>
+    </div>
+  </section>
 </div>
