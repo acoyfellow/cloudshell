@@ -28,12 +28,11 @@
 <div class:bg-background={!inline} class={`flex items-end gap-2 ${inline ? 'min-w-0 flex-1 overflow-visible' : 'border-b px-1 pt-2'}`}>
   <div class="shrink-0 pb-px">
     <Button
-      size="icon"
-      variant="outline"
-      class="thumb-icon-target hit-area-2 rounded-t-md rounded-b-none border-b-0"
+      variant="ghost"
+      class="tab-new-button hit-area-y-1 min-w-12 rounded-t-md rounded-b-none px-4 text-muted-foreground hover:text-foreground"
       onclick={onCreateTab}
     >
-      <Plus />
+      <Plus class="size-4" />
       <span class="sr-only">New tab</span>
     </Button>
   </div>
@@ -110,6 +109,19 @@
 
   .tab-strip-scroll::-webkit-scrollbar {
     display: none;
+  }
+
+  .tab-new-button {
+    height: calc(1rem + 2.5rem);
+    border-left: 1px solid rgba(255, 255, 255, 0.035);
+    border-right: 1px solid rgba(255, 255, 255, 0.035);
+    border-top: 1px solid rgba(255, 255, 255, 0.035);
+    border-bottom: 0;
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .tab-new-button:hover {
+    background: rgba(255, 255, 255, 0.04);
   }
 
   .tab-shell {
