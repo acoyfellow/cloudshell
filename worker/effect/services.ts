@@ -10,10 +10,10 @@ import {
   createStoredTab,
   deleteStoredPorts,
   deleteStoredTabs,
-  ensureWorkspaceInitialized,
   getStoredPorts,
   getStoredTabs,
   isContainerActiveStatus,
+  loadWorkspaceSessions,
   normalizeRequestedTabId,
   putStoredPorts,
   putStoredSessions,
@@ -115,7 +115,7 @@ interface WorkspaceRepoApi {
     username: string,
     sessionId: string,
     tabId: string
-  ) => Effect.Effect<{ readonly lastActiveTabId: string }, InvalidInput | NotFound | PersistenceFailure>;
+  ) => Effect.Effect<{ readonly lastActiveTabId: string }, NotFound | PersistenceFailure>;
   readonly listPorts: (
     username: string,
     sessionId: string
@@ -256,7 +256,7 @@ const WorkspaceRepoLive = Layer.effect(
 
     const listSessions = (username: string) =>
       Effect.tryPromise({
-        try: () => ensureWorkspaceInitialized(env.USERS_KV, username),
+        try: () => loadWorkspaceSessions(env.USERS_KV, username),
         catch: toPersistenceFailure(`Failed to load sessions for ${username}`),
       });
 
@@ -495,15 +495,13 @@ const WorkspaceRepoLive = Layer.effect(
             return yield* Effect.fail(new NotFound({ message: 'Tab not found' }));
           }
 
-          if (tabs.length === 1) {
-            return yield* Effect.fail(
-              new InvalidInput({ message: 'Cannot delete the last tab in a session' })
-            );
-          }
-
           const nextTabs = tabs.filter((tab) => tab.id !== tabId);
           const nextActiveTabId =
-            session.lastActiveTabId === tabId ? nextTabs[0].id : session.lastActiveTabId;
+            nextTabs.length === 0
+              ? ''
+              : session.lastActiveTabId === tabId
+                ? nextTabs[0].id
+                : session.lastActiveTabId;
 
           yield* Effect.tryPromise({
             try: async () => {

@@ -2,11 +2,9 @@
   import MoreHorizontal from '@lucide/svelte/icons/ellipsis';
   import PenSquare from '@lucide/svelte/icons/pen-square';
   import Plus from '@lucide/svelte/icons/plus';
-  import SquareTerminal from '@lucide/svelte/icons/square-terminal';
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import { Button } from '$lib/components/ui/button';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-  import { ScrollArea } from '$lib/components/ui/scroll-area';
   import { Skeleton } from '$lib/components/ui/skeleton';
   import * as Tabs from '$lib/components/ui/tabs';
   import type { WorkspaceController } from '$lib/cloudshell/workspace-controller.svelte';
@@ -14,18 +12,32 @@
 
   let {
     controller,
+    inline = false,
     onCreateTab,
     onRenameTab,
     onDeleteTab,
   }: {
     controller: WorkspaceController;
+    inline?: boolean;
     onCreateTab: () => void;
     onRenameTab: (tab: Tab) => void;
     onDeleteTab: (tab: Tab) => void;
   } = $props();
 </script>
 
-<div class="bg-background flex items-center gap-3 border-b px-3 py-3 sm:px-4">
+<div class:bg-background={!inline} class={`flex items-end gap-2 ${inline ? 'min-w-0 flex-1 overflow-hidden' : 'border-b px-1 pt-2'}`}>
+  <div class="shrink-0 pb-px">
+    <Button
+      size="icon"
+      variant="outline"
+      class="thumb-icon-target hit-area-2 rounded-t-md rounded-b-none border-b-0"
+      onclick={onCreateTab}
+    >
+      <Plus />
+      <span class="sr-only">New tab</span>
+    </Button>
+  </div>
+
   <div class="min-w-0 flex-1">
     {#if controller.isWorkspaceLoading}
       <div class="flex gap-2">
@@ -35,22 +47,27 @@
       </div>
     {:else}
       <Tabs.Root value={controller.activeTabId} class="min-w-0">
-        <ScrollArea orientation="horizontal" class="w-full">
-          <Tabs.List variant="line" class="min-w-max gap-2 bg-transparent p-0">
+        <div class="tab-strip-scroll overflow-x-auto overflow-y-visible pb-0">
+          <Tabs.List variant="line" class="min-w-max h-auto items-end gap-1 bg-transparent p-0">
             {#each controller.tabs as tab (tab.id)}
-              <div class="bg-background group relative flex min-w-0 max-w-56 items-center rounded-md border">
+              <div
+                class={`tab-shell group -mb-px min-w-0 max-w-64 ${
+                  tab.id === controller.activeTabId
+                    ? 'bg-background z-10'
+                    : 'bg-muted/25 border-border/90 hover:bg-muted/35'
+                }`}
+              >
                 <Tabs.Trigger
                   value={tab.id}
-                  class="flex min-w-0 justify-start rounded-md px-3 py-2 text-left"
+                  class="hit-area-y-2 h-auto min-w-0 flex-1 justify-start rounded-t-md rounded-b-none border-0 px-4 py-2.5 text-left after:hidden data-active:bg-transparent"
                   onclick={() => controller.setActiveTab(tab.id)}
                 >
-                  <SquareTerminal class="size-4" />
                   <span class="truncate">{tab.name}</span>
                 </Tabs.Trigger>
 
                 <DropdownMenu.Root>
                   <DropdownMenu.Trigger
-                    class="text-muted-foreground hover:bg-muted hover:text-foreground absolute top-1/2 right-1 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md opacity-0 transition-all group-hover:opacity-100 group-focus-within:opacity-100"
+                    class="text-muted-foreground hover:bg-muted hover:text-foreground hit-area-2 inline-flex size-9 shrink-0 items-center justify-center rounded-md opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
                   >
                     <MoreHorizontal class="size-4" />
                     <span class="sr-only">Tab actions</span>
@@ -73,13 +90,42 @@
               </div>
             {/each}
           </Tabs.List>
-        </ScrollArea>
+        </div>
       </Tabs.Root>
     {/if}
   </div>
-
-  <Button size="lg" onclick={onCreateTab}>
-    <Plus />
-    <span>New tab</span>
-  </Button>
 </div>
+
+<style>
+  .tab-strip-scroll {
+    scrollbar-width: none;
+  }
+
+  .tab-strip-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab-shell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    border-top-left-radius: calc(var(--radius) - 2px);
+    border-top-right-radius: calc(var(--radius) - 2px);
+    border-left: 1px solid hsl(var(--border));
+    border-right: 1px solid hsl(var(--border));
+    border-top: 1px solid hsl(var(--border));
+    padding-right: 0.25rem;
+  }
+
+  .tab-shell::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    height: 1px;
+    background: hsl(var(--border));
+    pointer-events: none;
+  }
+</style>

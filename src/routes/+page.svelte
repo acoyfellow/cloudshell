@@ -76,7 +76,7 @@
     </div>
   </div>
 {:else if currentUser?.email}
-  <Workspace email={currentUser.email} />
+  <Workspace />
 {:else}
   <div class="bg-background min-h-dvh">
     <div class="mx-auto flex min-h-dvh w-full max-w-7xl items-center px-4 py-8 sm:px-6 lg:px-8">

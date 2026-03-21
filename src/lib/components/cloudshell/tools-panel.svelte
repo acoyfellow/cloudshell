@@ -5,13 +5,6 @@
   import Save from '@lucide/svelte/icons/save';
   import Search from '@lucide/svelte/icons/search';
   import Trash2 from '@lucide/svelte/icons/trash-2';
-  import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-  } from '$lib/components/ui/card';
   import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '$lib/components/ui/empty';
   import * as Field from '$lib/components/ui/field';
   import { Input } from '$lib/components/ui/input';
@@ -39,26 +32,23 @@
 </script>
 
 <ScrollArea class="h-full pr-3">
-  <div class="space-y-4">
-    <Card class="bg-card shadow-none">
-      <CardHeader>
-        <CardTitle>Workspace controls</CardTitle>
-        <CardDescription>Snapshot the current workstation state for this user.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Button size="lg" class="w-full justify-start" onclick={() => runWithToast(() => controller.backupWorkspace())}>
-          <Save />
-          <span>Checkpoint workspace</span>
-        </Button>
-      </CardContent>
-    </Card>
+  <div class="space-y-8">
+    <section class="space-y-3">
+      <div class="space-y-1">
+        <h3 class="text-base font-semibold">Workspace controls</h3>
+        <p class="text-muted-foreground text-sm">Snapshot the current workstation state for this user.</p>
+      </div>
+      <Button size="lg" class="w-full justify-start" onclick={() => runWithToast(() => controller.backupWorkspace())}>
+        <Save />
+        <span>Checkpoint workspace</span>
+      </Button>
+    </section>
 
-    <Card class="bg-card shadow-none">
-      <CardHeader>
-        <CardTitle>Share links</CardTitle>
-        <CardDescription>Create a read-only share link and inspect existing share tokens.</CardDescription>
-      </CardHeader>
-      <CardContent class="space-y-4">
+    <section class="space-y-4">
+      <div class="space-y-1">
+        <h3 class="text-base font-semibold">Share links</h3>
+        <p class="text-muted-foreground text-sm">Create a read-only share link and inspect existing share tokens.</p>
+      </div>
         <Button size="lg" class="w-full justify-start" variant="outline" onclick={() => runWithToast(() => controller.createShareLink())}>
           <Link2 />
           <span>Create share link</span>
@@ -97,15 +87,13 @@
             </div>
           </div>
         {/if}
-      </CardContent>
-    </Card>
+    </section>
 
-    <Card class="bg-card shadow-none">
-      <CardHeader>
-        <CardTitle>SSH keys</CardTitle>
-        <CardDescription>Attach keys for tooling or remotes inside the workstation.</CardDescription>
-      </CardHeader>
-      <CardContent class="space-y-4">
+    <section class="space-y-4">
+      <div class="space-y-1">
+        <h3 class="text-base font-semibold">SSH keys</h3>
+        <p class="text-muted-foreground text-sm">Attach keys for tooling or remotes inside the workstation.</p>
+      </div>
         <Field.Field>
           <Field.Label>Key name</Field.Label>
           <Field.Content>
@@ -165,21 +153,18 @@
             {/each}
           </div>
         {/if}
-      </CardContent>
-    </Card>
+    </section>
 
-    <Card class="bg-card shadow-none">
-      <CardHeader>
-        <CardTitle>Custom Dockerfile</CardTitle>
-        <CardDescription>Override the container image build for this workstation.</CardDescription>
-      </CardHeader>
-      <CardContent class="space-y-4">
+    <section class="space-y-4">
+      <div class="space-y-1">
+        <h3 class="text-base font-semibold">Custom Dockerfile</h3>
+        <p class="text-muted-foreground text-sm">Override the container image build for this workstation.</p>
+      </div>
         <Textarea bind:value={dockerfile} placeholder="Paste a custom Dockerfile here" rows={10} />
         <Button size="lg" class="w-full justify-start" variant="outline" onclick={() => runWithToast(() => controller.saveDockerfile(dockerfile))}>
           <FolderKanban />
           <span>Save Dockerfile</span>
         </Button>
-      </CardContent>
-    </Card>
+    </section>
   </div>
 </ScrollArea>

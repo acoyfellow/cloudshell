@@ -1,6 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import Plus from '@lucide/svelte/icons/plus';
   import { authStore } from '$lib/auth-store.svelte';
+  import { Button } from '$lib/components/ui/button';
+  import {
+    Empty,
+    EmptyContent,
+    EmptyDescription,
+    EmptyHeader,
+    EmptyMedia,
+    EmptyTitle,
+  } from '$lib/components/ui/empty';
   import { IsMobile } from '$lib/hooks/is-mobile.svelte';
   import { ResizableHandle, ResizablePane, ResizablePaneGroup } from '$lib/components/ui/resizable';
   import * as Sidebar from '$lib/components/ui/sidebar';
@@ -13,11 +23,8 @@
   import SessionDialog from './session-dialog.svelte';
   import SessionSidebar from './session-sidebar.svelte';
   import TabDialog from './tab-dialog.svelte';
-  import TabStrip from './tab-strip.svelte';
   import TerminalPane from './terminal-pane.svelte';
   import UtilityPane from './utility-pane.svelte';
-
-  let { email }: { email: string } = $props();
 
   const controller = new WorkspaceController();
   const isMobile = new IsMobile();
@@ -133,19 +140,14 @@
     <Sidebar.Inset class="h-dvh min-h-0 overflow-hidden bg-transparent shadow-none">
       <AppToolbar
         {controller}
-        {email}
+        onCreateTab={openCreateTabDialog}
+        onRenameTab={openRenameTabDialog}
+        onDeleteTab={requestTabDelete}
         onToggleCommand={() => (commandOpen = true)}
         onSignOut={() => authStore.signOut()}
       />
 
-      <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3 sm:p-4">
-        <TabStrip
-          {controller}
-          onCreateTab={openCreateTabDialog}
-          onRenameTab={openRenameTabDialog}
-          onDeleteTab={requestTabDelete}
-        />
-
+      <div class="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden p-3 sm:p-4">
         {#if controller.isWorkspaceLoading}
           <div class="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
             <Skeleton class="min-h-[32rem] rounded-lg" />
@@ -154,6 +156,36 @@
               <Skeleton class="h-full rounded-lg" />
             </div>
           </div>
+        {:else if controller.sessions.length === 0}
+          <Empty class="min-h-0 flex-1 border-0 bg-transparent">
+            <EmptyHeader>
+              <EmptyTitle>No sessions yet</EmptyTitle>
+              <EmptyDescription>
+                Create a session to start a new isolated runtime with its own tabs and terminal state.
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button size="lg" class="min-w-48" onclick={openCreateSessionDialog}>
+                <Plus />
+                <span>Create session</span>
+              </Button>
+            </EmptyContent>
+          </Empty>
+        {:else if controller.tabs.length === 0 || !controller.activeTabId}
+          <Empty class="min-h-0 flex-1 border-0 bg-transparent">
+            <EmptyHeader>
+              <EmptyTitle>No tabs in this session</EmptyTitle>
+              <EmptyDescription>
+                This session does not have an active terminal tab yet.
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button size="lg" class="min-w-48" onclick={openCreateTabDialog}>
+                <Plus />
+                <span>Create tab</span>
+              </Button>
+            </EmptyContent>
+          </Empty>
         {:else}
           <div class="relative min-h-0 flex-1 overflow-hidden">
             {#if isMobile.current}

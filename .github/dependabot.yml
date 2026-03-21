@@ -1,33 +1,21 @@
-# Dependabot configuration for automated dependency updates
 # https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
 
 version: 2
 updates:
-  # Enable version updates for npm
-  - package-ecosystem: 'npm'
+  - package-ecosystem: bun
     directory: '/'
     schedule:
-      interval: 'weekly'
-      day: 'monday'
+      interval: weekly
+      day: monday
       time: '06:00'
-    # Limit open PRs to prevent overwhelming maintainers
     open-pull-requests-limit: 5
-    # Group minor and patch updates together
     groups:
       minor-updates:
         patterns:
           - '*'
         update-types:
-          - 'minor'
-          - 'patch'
-    # Label PRs for easy filtering
-    labels:
-      - 'dependencies'
-      - 'npm'
-    # Reviewers for dependency PRs
-    reviewers:
-      - 'acoyfellow'
+          - minor
+          - patch
     commit-message:
-      prefix: 'deps'
-      include: 'scope'
-    # Security updates are automatic and bypass this schedule
+      prefix: deps
+      include: scope

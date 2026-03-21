@@ -3,70 +3,82 @@
   import Search from '@lucide/svelte/icons/search';
   import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
   import { Button } from '$lib/components/ui/button';
-  import { ButtonGroup, ButtonGroupText } from '$lib/components/ui/button-group';
   import { SidebarTrigger } from '$lib/components/ui/sidebar';
   import type { WorkspaceController } from '$lib/cloudshell/workspace-controller.svelte';
+  import type { Tab } from '$lib/cloudshell/types';
+  import TabStrip from './tab-strip.svelte';
 
   let {
     controller,
-    email,
+    onCreateTab,
+    onRenameTab,
+    onDeleteTab,
     onToggleCommand,
     onSignOut,
   }: {
     controller: WorkspaceController;
-    email: string;
+    onCreateTab: () => void;
+    onRenameTab: (tab: Tab) => void;
+    onDeleteTab: (tab: Tab) => void;
     onToggleCommand: () => void;
     onSignOut: () => void;
   } = $props();
-
 </script>
 
-<header class="bg-background sticky top-0 z-30 border-b">
-  <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-    <div class="flex min-w-0 items-center gap-3">
-      <SidebarTrigger class="shrink-0" />
+<header class="bg-background sticky top-0 z-30">
+  <div class="flex min-h-16 items-end gap-3 border-b border-border/40 px-3 pt-2">
+    <div class="flex min-w-0 flex-1 items-end gap-2 overflow-hidden">
+      <SidebarTrigger class="thumb-icon-target hit-area-2 mb-px shrink-0 rounded-lg" />
 
-      <div class="flex min-w-0 items-center gap-2">
-        <div class="flex min-w-0 flex-col">
-          <span class="text-muted-foreground text-[0.7rem] font-semibold uppercase tracking-[0.22em]">
-            Cloudshell
-          </span>
-          <span class="truncate text-sm font-medium">{email}</span>
-        </div>
-
-        <Button
-          size="icon-sm"
-          variant={controller.utilityPaneOpen ? 'default' : 'outline'}
-          aria-label={controller.utilityPaneOpen ? 'Close settings' : 'Open settings'}
-          title={controller.utilityPaneOpen ? 'Close settings' : 'Open settings'}
-          onclick={() =>
-            controller.utilityPaneOpen
-              ? controller.closeUtilityPane()
-              : controller.openUtilityPane(controller.utilityPaneTab)
-          }
-        >
-          <SlidersHorizontal />
-        </Button>
-      </div>
+      {#if controller.sessions.length > 0}
+        <TabStrip
+          {controller}
+          inline
+          {onCreateTab}
+          {onRenameTab}
+          {onDeleteTab}
+        />
+      {/if}
     </div>
 
-    <div class="flex flex-wrap items-center justify-end gap-2">
-      <ButtonGroup>
-        <Button
-          size="lg"
-          variant="outline"
-          aria-label="Open command palette"
-          title="Open command palette"
-          onclick={onToggleCommand}
-        >
-          <Search />
-        </Button>
-        <ButtonGroupText class="hidden h-9 px-2.5 sm:flex">⌘K</ButtonGroupText>
-      </ButtonGroup>
+    <div class="flex shrink-0 items-center justify-end gap-2 self-end pb-2">
+      <Button
+        size="icon"
+        variant={controller.utilityPaneOpen ? 'default' : 'outline'}
+        class="thumb-icon-target hit-area-2 rounded-xl"
+        aria-label={controller.utilityPaneOpen ? 'Close settings' : 'Open settings'}
+        title={controller.utilityPaneOpen ? 'Close settings' : 'Open settings'}
+        onclick={() =>
+          controller.utilityPaneOpen
+            ? controller.closeUtilityPane()
+            : controller.openUtilityPane(controller.utilityPaneTab)
+        }
+      >
+        <SlidersHorizontal />
+      </Button>
 
-      <Button size="lg" variant="outline" onclick={onSignOut}>
+      <Button
+        size="icon"
+        variant="outline"
+        class="thumb-icon-target hit-area-2 rounded-xl"
+        aria-label="Open command palette"
+        title="Open command palette"
+        onclick={onToggleCommand}
+      >
+        <Search />
+        <span class="sr-only">Open command palette</span>
+      </Button>
+
+      <Button
+        size="icon"
+        variant="outline"
+        class="thumb-icon-target hit-area-2 rounded-xl"
+        aria-label="Logout"
+        title="Logout"
+        onclick={onSignOut}
+      >
         <LogOut />
-        <span class="hidden md:inline">Logout</span>
+        <span class="sr-only">Logout</span>
       </Button>
     </div>
   </div>
