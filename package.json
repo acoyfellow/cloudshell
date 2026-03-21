@@ -53,7 +53,7 @@
     "@lucide/svelte": "^0.577.0",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
-    "alchemy": "^0.77.5",
+    "alchemy": "^0.90.0",
     "better-auth": "1.5.5",
     "drizzle-orm": "0.45.1",
     "effect": "3.21.0",
