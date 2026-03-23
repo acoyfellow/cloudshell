@@ -1,22 +1,46 @@
-# cloudshell
+<p align="center">
+  <img src="./static/favicon.svg" alt="Cloudshell logo" width="72" />
+</p>
 
-Cloudshell is a SvelteKit app backed by a sibling Cloudflare Worker and Cloudflare Containers.
+<h1 align="center">Cloudshell</h1>
 
-- The SvelteKit app owns auth, routing, and the browser UI.
-- The worker owns sessions, tabs, files, recordings, ports, shares, and terminal orchestration.
-- Each user gets one shared workstation filesystem.
-- Each session gets its own isolated runtime container.
-- Each tab inside a session gets its own `tmux` shell state.
+<p align="center"><strong>Experimental</strong></p>
+
+<p align="center">
+  A terminal-first cloud workstation with a SvelteKit frontend and a Cloudflare Worker + Containers backend.
+</p>
+
+## What it is
+
+Cloudshell gives each user one shared workstation filesystem and lets them open isolated runtime sessions on top of it.
+
+The core model is:
+
+- `user workstation` = one shared filesystem per user
+- `session` = one isolated runtime container
+- `tab` = one independent shell inside the active session
+
+## What ships today
+
+- SvelteKit app for auth, routing, and UI
+- Better Auth backed by D1
+- Cloudflare Worker backend for session orchestration
+- Cloudflare Containers for isolated runtime sessions
+- Shared per-user workstation files across sessions
+- Per-tab shell state inside each session
+- Left-side files drawer wired to the same filesystem the terminal sees
+- Ports and tools workspace for forwarding, sharing, SSH keys, and backups
+- npm-bundled terminal stack with no CDN dependency
 
 ## Repo layout
 
 ```text
-src/                 SvelteKit app
-worker/              Cloudflare Worker + container runtime
-shared/              Shared helpers used by app and worker
-migrations/          Better Auth / D1 migrations
-old/                 Archived pre-rebuild app for reference
-alchemy.run.ts       Dev + deploy orchestration
+src/            SvelteKit app
+worker/         Cloudflare Worker + container runtime
+shared/         Shared helpers used by app and worker
+migrations/     Better Auth / D1 migrations
+old/            Archived pre-rebuild app for reference
+alchemy.run.ts  Dev + deploy orchestration
 ```
 
 ## Local development
@@ -76,7 +100,7 @@ bun run db:remote
 
 ## Architecture notes
 
-- Better Auth uses D1 for user/session records.
+- Better Auth uses D1 for user and auth records.
 - Runtime metadata stays in KV/R2, not D1.
 - Terminal access uses app-origin websocket routing in production and a signed direct-worker ticket in local dev.
 - `@xterm/xterm` and `@xterm/addon-fit` are bundled from npm. There is no CDN-loaded terminal dependency.

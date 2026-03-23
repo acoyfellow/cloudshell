@@ -8,22 +8,13 @@ import {
   SvelteKit,
   Worker,
 } from 'alchemy/cloudflare';
+import { deployEnv } from './alchemy.env';
 
 const projectName = 'cloudshell';
 const workerName = `${projectName}-worker`;
-const customDomainName = 'cloudshell.coey.dev';
-const appBaseUrl = process.env.BETTER_AUTH_URL || `https://${customDomainName}`;
-const terminalTicketSecret =
-  process.env.TERMINAL_TICKET_SECRET ||
-  process.env.BETTER_AUTH_SECRET ||
-  '85ffaf768460252698ede4b8af94774c283d815139c4d6fcebca624c61a2e01f';
-const accountId =
-  process.env.R2_ACCOUNT_ID ||
-  process.env.CLOUDFLARE_ACCOUNT_ID ||
-  'bfcb6ac5b3ceaf42a09607f6f7925823';
 
 const project = await alchemy(projectName, {
-  password: process.env.ALCHEMY_PASSWORD || 'default-password',
+  password: deployEnv.password,
 });
 
 const DB = await D1Database(`${projectName}-db`, {
@@ -63,11 +54,12 @@ export const WORKER = await Worker(workerName, {
     Sandbox,
     USERS_KV,
     USER_DATA,
-    TERMINAL_TICKET_SECRET: terminalTicketSecret,
-    AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID || '',
-    AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY || '',
+    TERMINAL_TICKET_SECRET: deployEnv.terminalSecret,
+    AWS_ACCESS_KEY_ID: deployEnv.awsAccessKeyId,
+    AWS_SECRET_ACCESS_KEY: deployEnv.awsSecretAccessKey,
     R2_BUCKET_NAME: USER_DATA.name,
-    R2_ACCOUNT_ID: accountId,
+    R2_ACCOUNT_ID: deployEnv.accountId,
+    PORT_FORWARD_BASE_DOMAIN: deployEnv.portForwardBaseDomain,
   },
   url: false,
 });
@@ -82,16 +74,16 @@ export const APP = await SvelteKit(`${projectName}-app`, {
   url: true,
   adopt: true,
   env: {
-    BETTER_AUTH_SECRET: terminalTicketSecret,
-    BETTER_AUTH_URL: appBaseUrl,
-    BETTER_AUTH_TRUSTED_ORIGINS: ['http://localhost:5173', appBaseUrl].join(','),
-    TERMINAL_TICKET_SECRET: terminalTicketSecret,
+    BETTER_AUTH_SECRET: deployEnv.terminalSecret,
+    BETTER_AUTH_URL: deployEnv.betterAuthUrl,
+    BETTER_AUTH_TRUSTED_ORIGINS: ['http://localhost:5173', deployEnv.betterAuthUrl].join(','),
+    TERMINAL_TICKET_SECRET: deployEnv.terminalSecret,
     WORKER_DEV_ORIGIN: WORKER.url || 'http://localhost:1337',
   },
 });
 
 export const APP_DOMAIN = await CustomDomain(`${projectName}-app-domain`, {
-  name: customDomainName,
+  name: deployEnv.portForwardBaseDomain,
   workerName: APP.name,
   adopt: true,
 });

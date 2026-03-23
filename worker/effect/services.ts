@@ -557,7 +557,7 @@ const WorkspaceRepoLive = Layer.effect(
           const subdomain = `${port}-${containerId}`.replace(/:/g, '-');
           const forward: SessionPort = {
             port,
-            url: `https://${subdomain}.cloudshell.coey.dev`,
+            url: `https://${subdomain}.${env.PORT_FORWARD_BASE_DOMAIN}`,
             createdAt: Date.now(),
           };
 

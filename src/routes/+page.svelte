@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { base } from '$app/paths';
+  import { asset } from '$app/paths';
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
   import { toast } from 'svelte-sonner';
   import Workspace from '$lib/cloudshell/Workspace.svelte';
@@ -61,7 +61,7 @@
 
 {#if !authResolved}
   <div class="bg-background flex min-h-dvh flex-col items-center justify-center gap-4 px-4">
-    <img src={`${base}/logo.svg`} alt="" class="size-12" width="48" height="48" />
+    <img src={asset('/logo.svg')} alt="" class="size-12" width="48" height="48" />
     <LoaderCircle class="text-muted-foreground size-6 animate-spin" aria-hidden="true" />
   </div>
 {:else if currentUser?.email}
@@ -70,10 +70,10 @@
   <div class="bg-background flex min-h-dvh items-center justify-center px-4 py-8">
     <Card.Root class="bg-card w-full max-w-sm rounded-lg border shadow-none">
       <Card.Header class="flex flex-col items-center pb-2 pt-8">
-        <img src={`${base}/logo.svg`} alt="cloudshell" class="size-14" width="56" height="56" />
+        <img src={asset('/logo.svg')} alt="cloudshell" class="size-14" width="56" height="56" />
       </Card.Header>
 
-      <Card.Content class="pt-2">
+      <Card.Content class="py-2">
         <form class="space-y-4" onsubmit={(event) => event.preventDefault()}>
           <Field.Field class="space-y-2">
             <Field.Label for="auth-email">Email</Field.Label>
@@ -111,7 +111,7 @@
         </form>
       </Card.Content>
 
-      <Card.Footer class="grid gap-3 pb-8 pt-2 sm:grid-cols-2">
+      <Card.Footer class="grid gap-3 py-3">
         <Button size="lg" class="w-full" disabled={authStore.isLoading} onclick={handleSignIn}>
           {authStore.isLoading ? '…' : 'Sign in'}
         </Button>
