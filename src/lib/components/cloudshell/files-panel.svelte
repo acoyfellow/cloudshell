@@ -1,6 +1,5 @@
 <script lang="ts">
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
-  import RefreshCw from '@lucide/svelte/icons/refresh-cw';
   import Upload from '@lucide/svelte/icons/upload';
   import { Button } from '$lib/components/ui/button';
   import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '$lib/components/ui/empty';
@@ -18,6 +17,19 @@
   let fileInput: HTMLInputElement | null = null;
   let dragDepth = $state(0);
   let isDraggingFiles = $state(false);
+
+  function syncFiles() {
+    if (
+      controller.isFilesLoading ||
+      controller.isFilesRefreshing ||
+      controller.isFilesUploading ||
+      (typeof document !== 'undefined' && document.hidden)
+    ) {
+      return;
+    }
+
+    void controller.refreshFiles({ background: true });
+  }
 
   function expandAncestors(path: string) {
     const segments = path.split('/').filter(Boolean);
@@ -118,6 +130,32 @@
       expandAncestors(controller.currentFolderPath);
     }
   });
+
+  $effect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const handleFocus = () => {
+      syncFiles();
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        syncFiles();
+      }
+    };
+
+    const syncInterval = window.setInterval(syncFiles, 2500);
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(syncInterval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  });
 </script>
 
 <div
@@ -158,22 +196,6 @@
     />
 
     <div class="flex shrink-0 items-center gap-2">
-      <Button
-        size="icon"
-        variant="ghost"
-        class="rounded-lg"
-        onclick={() => void controller.refreshFiles()}
-        disabled={controller.isFilesRefreshing || controller.isFilesUploading}
-        aria-label="Refresh files"
-        title="Refresh files"
-      >
-        {#if controller.isFilesRefreshing}
-          <Spinner class="size-4" />
-        {:else}
-          <RefreshCw class="size-4" />
-        {/if}
-      </Button>
-
       <Button
         size="sm"
         variant="outline"

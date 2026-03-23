@@ -19,6 +19,8 @@ export interface Env {
   AWS_SECRET_ACCESS_KEY: string;
   R2_BUCKET_NAME: string;
   R2_ACCOUNT_ID: string;
+  /** Hostname for `https://<port>-<id>.<domain>`; set from BETTER_AUTH_URL in alchemy.run.ts */
+  PORT_FORWARD_BASE_DOMAIN: string;
   TERMINAL_TICKET_SECRET: string;
   Sandbox: DurableObjectNamespace<Container>;
   USERS_KV: KVNamespace;

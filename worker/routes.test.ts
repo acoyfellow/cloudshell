@@ -116,6 +116,7 @@ function createEnv(): Env {
     AWS_SECRET_ACCESS_KEY: '',
     R2_BUCKET_NAME: 'test-bucket',
     R2_ACCOUNT_ID: 'test-account',
+    PORT_FORWARD_BASE_DOMAIN: 'example.com',
     TERMINAL_TICKET_SECRET: 'test-secret',
     Sandbox: {} as Env['Sandbox'],
     USERS_KV: new MockKVNamespace(),

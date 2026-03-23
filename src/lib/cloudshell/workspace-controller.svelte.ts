@@ -592,11 +592,13 @@ export class WorkspaceController {
     await this.openFilesDrawer();
   }
 
-  async refreshFiles() {
+  async refreshFiles(options: { background?: boolean } = {}) {
     try {
       await this.loadFiles({ refresh: true });
     } catch (error) {
-      toast.error((error as Error).message || 'Unable to refresh files');
+      if (!options.background) {
+        toast.error((error as Error).message || 'Unable to refresh files');
+      }
     }
   }
 
