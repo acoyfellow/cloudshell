@@ -177,9 +177,13 @@ import LoadingPane from './loading-pane.svelte';
           controller.setTerminalStatus('disconnected', 'Unable to reach the terminal runtime.');
         }
       };
-      nextSocket.onclose = () => {
+      nextSocket.onclose = (ev) => {
         if (sequence === reconnectSequence) {
-          controller.setTerminalStatus('disconnected', 'Terminal connection closed.');
+          const detail =
+            ev.code === 1000
+              ? 'Terminal connection closed.'
+              : `Terminal connection closed (code ${ev.code}${ev.reason ? `: ${ev.reason}` : ''}).`;
+          controller.setTerminalStatus('disconnected', detail);
         }
       };
     } catch (error) {
