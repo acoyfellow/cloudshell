@@ -1,5 +1,5 @@
 import type { Context, ExecutionContext } from 'hono';
-import { Cause, Exit, ManagedRuntime } from 'effect';
+import { Cause, Exit, ManagedRuntime, type Effect } from 'effect';
 import type { Env } from '../types';
 import {
   getErrorMessage,
@@ -61,7 +61,7 @@ export async function runRequestEffect<A>(
     throw Cause.squash(exit.cause);
   }
 
-  const value = exit.value;
+  const value: A = exit.value as A;
 
   if (isWebSocketUpgradeResponse(value) && options?.executionCtx) {
     options.executionCtx.waitUntil(runtime.dispose());
