@@ -12,8 +12,6 @@ const raw = z
     AWS_ACCESS_KEY_ID: z.string().optional(),
     AWS_SECRET_ACCESS_KEY: z.string().optional(),
     CI: z.string().optional(),
-    /** Set to "1" to skip R2 FUSE in the terminal container (debug only). Default: mount R2. */
-    SKIP_R2_FUSE: z.string().optional(),
   })
   .parse(process.env);
 
@@ -42,5 +40,4 @@ export const deployEnv = {
   portForwardBaseDomain: new URL(betterAuthUrl).hostname,
   awsAccessKeyId: raw.AWS_ACCESS_KEY_ID ?? '',
   awsSecretAccessKey: raw.AWS_SECRET_ACCESS_KEY ?? '',
-  skipR2Fuse: raw.SKIP_R2_FUSE ?? '0',
 };

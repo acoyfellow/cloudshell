@@ -38,7 +38,6 @@ class CloudShellTerminal extends Container {
   constructor(ctx: DurableObjectState<{}>, env: Env) {
     super(ctx, env);
     this.envVars = {
-      SKIP_R2_FUSE: env.SKIP_R2_FUSE,
       AWS_ACCESS_KEY_ID: env.AWS_ACCESS_KEY_ID,
       AWS_SECRET_ACCESS_KEY: env.AWS_SECRET_ACCESS_KEY,
       R2_BUCKET_NAME: env.R2_BUCKET_NAME,
