@@ -13,6 +13,13 @@ import { deployEnv } from './alchemy.env';
 const projectName = 'cloudshell';
 const workerName = `${projectName}-worker`;
 
+/** Browser WSS terminal URL (must match worker HTTPS custom domain). */
+const WORKER_PUBLIC_ORIGIN = 'https://cloudshell-api.coey.dev';
+
+const isLocalDevHostname =
+  deployEnv.portForwardBaseDomain === 'localhost' ||
+  deployEnv.portForwardBaseDomain === '127.0.0.1';
+
 const project = await alchemy(projectName, {
   password: deployEnv.password,
 });
@@ -62,6 +69,11 @@ export const WORKER = await Worker(workerName, {
     PORT_FORWARD_BASE_DOMAIN: deployEnv.portForwardBaseDomain,
   },
   url: false,
+  ...(isLocalDevHostname
+    ? {}
+    : {
+        domains: [new URL(WORKER_PUBLIC_ORIGIN).hostname],
+      }),
 });
 
 export const APP = await SvelteKit(`${projectName}-app`, {
@@ -79,6 +91,7 @@ export const APP = await SvelteKit(`${projectName}-app`, {
     BETTER_AUTH_TRUSTED_ORIGINS: ['http://localhost:5173', deployEnv.betterAuthUrl].join(','),
     TERMINAL_TICKET_SECRET: deployEnv.terminalSecret,
     WORKER_DEV_ORIGIN: WORKER.url || 'http://localhost:1337',
+    WORKER_PUBLIC_ORIGIN,
   },
 });
 

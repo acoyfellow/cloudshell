@@ -18,6 +18,8 @@ declare global {
 				BETTER_AUTH_TRUSTED_ORIGINS?: string;
 				TERMINAL_TICKET_SECRET?: string;
 				WORKER_DEV_ORIGIN?: string;
+				/** Base URL for WSS terminal (worker custom domain), e.g. https://api.example.com */
+				WORKER_PUBLIC_ORIGIN?: string;
 			};
 		}
 	}

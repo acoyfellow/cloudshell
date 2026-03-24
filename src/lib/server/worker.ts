@@ -100,14 +100,6 @@ export async function resolveTerminalConnection(
   sessionId: string,
   tabId: string
 ): Promise<{ url: string; mode: 'proxy' | 'direct' }> {
-  if (!dev) {
-    const url = new URL('/ws/terminal', event.url.origin);
-    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    url.searchParams.set('sessionId', sessionId);
-    url.searchParams.set('tabId', tabId);
-    return { url: url.toString(), mode: 'proxy' };
-  }
-
   const identity = getAuthenticatedIdentity(event);
   const secret =
     event.platform?.env?.TERMINAL_TICKET_SECRET || event.platform?.env?.BETTER_AUTH_SECRET;
@@ -127,8 +119,20 @@ export async function resolveTerminalConnection(
     secret
   );
 
-  const url = new URL('/ws/terminal', getWorkerOrigin(event));
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  if (dev) {
+    const url = new URL('/ws/terminal', getWorkerOrigin(event));
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    url.searchParams.set('ticket', ticket);
+    return { url: url.toString(), mode: 'direct' };
+  }
+
+  const publicOrigin = event.platform?.env?.WORKER_PUBLIC_ORIGIN?.replace(/\/$/, '');
+  if (!publicOrigin) {
+    throw error(500, 'WORKER_PUBLIC_ORIGIN is not configured');
+  }
+
+  const url = new URL('/ws/terminal', publicOrigin);
+  url.protocol = 'wss:';
   url.searchParams.set('ticket', ticket);
 
   return { url: url.toString(), mode: 'direct' };
