@@ -38,6 +38,7 @@ class CloudShellTerminal extends Container {
   constructor(ctx: DurableObjectState<{}>, env: Env) {
     super(ctx, env);
     this.envVars = {
+      SKIP_R2_FUSE: env.SKIP_R2_FUSE,
       AWS_ACCESS_KEY_ID: env.AWS_ACCESS_KEY_ID,
       AWS_SECRET_ACCESS_KEY: env.AWS_SECRET_ACCESS_KEY,
       R2_BUCKET_NAME: env.R2_BUCKET_NAME,
@@ -160,6 +161,14 @@ function createApp() {
     if (upgrade?.toLowerCase() !== 'websocket') {
       return c.text('expected websocket', 426);
     }
+
+    // Workers Logs (not Container stdout): confirms the request reached this worker before DO/container.
+    console.log('[ws/terminal] incoming', {
+      hasTicket: Boolean(c.req.query('ticket')),
+      querySessionId: c.req.query('sessionId') ?? null,
+      queryTabId: c.req.query('tabId') ?? null,
+      hasUserHeader: Boolean(c.req.header('X-User-Id')),
+    });
 
     return runRouteEffect(
       c,

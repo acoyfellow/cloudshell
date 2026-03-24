@@ -51,8 +51,11 @@ RUN git config --global init.defaultBranch main
 RUN adduser -D -s /bin/bash user
 
 COPY --from=build /server /server
-COPY worker/.tmux.conf /home/user/.tmux.conf
-RUN chown user:user /home/user/.tmux.conf
+
+# Keep /home/user empty so tigrisfs can mount R2 here. Seed tmux config from startup after mount.
+RUN mkdir -p /opt/cloudshell /home/user
+COPY worker/.tmux.conf /opt/cloudshell/.tmux.conf
+RUN chown user:user /opt/cloudshell/.tmux.conf /home/user
 
 COPY worker/startup.sh /startup.sh
 RUN chmod +x /startup.sh
