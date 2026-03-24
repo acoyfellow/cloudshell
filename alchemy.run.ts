@@ -67,6 +67,7 @@ export const WORKER = await Worker(workerName, {
     R2_BUCKET_NAME: USER_DATA.name,
     R2_ACCOUNT_ID: deployEnv.accountId,
     PORT_FORWARD_BASE_DOMAIN: deployEnv.portForwardBaseDomain,
+    SKIP_R2_FUSE: deployEnv.skipR2Fuse,
   },
   url: false,
   ...(isLocalDevHostname
