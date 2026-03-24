@@ -112,7 +112,6 @@ class MockR2Bucket implements R2Bucket {
 
 function createEnv(): Env {
   return {
-    SKIP_R2_FUSE: '0',
     AWS_ACCESS_KEY_ID: '',
     AWS_SECRET_ACCESS_KEY: '',
     R2_BUCKET_NAME: 'test-bucket',

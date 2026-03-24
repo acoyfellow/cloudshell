@@ -14,12 +14,6 @@ seed_tmux_if_missing() {
     fi
 }
 
-if [ "${SKIP_R2_FUSE:-}" = "1" ] || [ "${SKIP_R2_FUSE:-}" = "true" ]; then
-    echo "SKIP_R2_FUSE set — R2 FUSE disabled (debug)"
-    seed_tmux_if_missing
-    exec /server
-fi
-
 if [ -n "${AWS_ACCESS_KEY_ID:-}" ] && [ -n "${AWS_SECRET_ACCESS_KEY:-}" ] && [ -n "${R2_BUCKET_NAME:-}" ] && [ -n "${R2_ACCOUNT_ID:-}" ]; then
     R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
     MOUNT_POINT="${R2_FUSE_MOUNT_POINT:-/home/user}"

@@ -15,8 +15,6 @@ declare global {
 }
 
 export interface Env {
-  /** "1"/"true" = skip tigrisfs (debug). Otherwise R2 is mounted at /home/user when creds exist. */
-  SKIP_R2_FUSE: string;
   AWS_ACCESS_KEY_ID: string;
   AWS_SECRET_ACCESS_KEY: string;
   R2_BUCKET_NAME: string;
