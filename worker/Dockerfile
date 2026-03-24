@@ -8,7 +8,7 @@ COPY worker/container/go.mod ./
 RUN go mod download github.com/creack/pty github.com/gorilla/websocket
 
 COPY worker/container/main.go ./
-RUN go build -o /server
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /server
 
 FROM alpine:3.20
 

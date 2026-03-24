@@ -9,11 +9,9 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/creack/pty"
@@ -848,9 +846,6 @@ func getRecordingHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
-
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Upgrade") == "websocket" {
@@ -871,35 +866,11 @@ func main() {
 	mux.HandleFunc("/api/recording/stop", stopRecordingHandler)
 	mux.HandleFunc("/api/recording/get", getRecordingHandler)
 
-	server := &http.Server{
-		Addr:    ":8080",
-		Handler: mux,
+	// Block on main goroutine so PID 1 is the HTTP server (reliable for CF Containers waitForPort).
+	// Bind all interfaces explicitly (some runtimes are picky vs implicit ":8080").
+	const addr = "0.0.0.0:8080"
+	log.Printf("CloudShell terminal server listening on %s", addr)
+	if err := http.ListenAndServe(addr, mux); err != nil {
+		log.Fatal(err)
 	}
-
-	go func() {
-		log.Printf("CloudShell terminal server listening on %s", server.Addr)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server error: %v", err)
-		}
-	}()
-
-	<-stop
-	log.Println("Shutting down server...")
-
-	if username, sessionID := currentRuntimeContext(); username != "" && sessionID != "" {
-		if count, err := checkpointSession(username, sessionID); err != nil {
-			log.Printf("Checkpoint on shutdown failed for %s/%s: %v", username, sessionID, err)
-		} else {
-			log.Printf("Checkpointed %d tabs on shutdown for %s/%s", count, username, sessionID)
-		}
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := server.Shutdown(ctx); err != nil {
-		log.Printf("Shutdown error: %v", err)
-	}
-
-	log.Println("Server stopped")
 }
