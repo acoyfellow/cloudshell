@@ -72,7 +72,7 @@ export async function runRequestEffect<A>(
   return value;
 }
 
-export function toRouteErrorResponse(c: WorkerContext, error: unknown): Response {
+export function toErrorResponse(error: unknown): Response {
   const normalized = normalizeRouteError(error);
   const appError = isAppError(normalized)
     ? normalized
@@ -94,6 +94,10 @@ export function toRouteErrorResponse(c: WorkerContext, error: unknown): Response
     status,
     headers: { 'Content-Type': 'application/json; charset=UTF-8' },
   });
+}
+
+export function toRouteErrorResponse(_c: WorkerContext, error: unknown): Response {
+  return toErrorResponse(error);
 }
 
 function tryGetExecutionCtx(c: WorkerContext): ExecutionContext | undefined {
