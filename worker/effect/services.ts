@@ -1,5 +1,5 @@
 import { Effect, Layer } from 'effect';
-import { getContainer } from '@cloudflare/containers';
+import { getContainer, switchPort } from '@cloudflare/containers';
 import {
   getUserSessionContainerId,
 } from '../auth';
@@ -875,16 +875,10 @@ const ContainerRuntimeLive = Layer.effect(
               headers.set('X-User', input.username);
               headers.set('X-Session-Id', input.sessionId);
               headers.set('X-Tab-Id', input.tabId);
-              // Match Cloudflare's container WebSocket example: synthetic http://host (not the browser's https worker URL).
-              // https://developers.cloudflare.com/containers/examples/websocket/
-              const u = new URL(input.request.url);
-              const internal = new URL(`${u.pathname}${u.search}`, 'http://localhost:8080');
-              return ready.container.fetch(
-                new Request(internal, {
-                  method: input.request.method,
-                  headers,
-                })
-              );
+              // Match @cloudflare/containers: Container.fetch → containerFetch uses getTcpPort + request.url (https→http).
+              // containers-demos/terminal uses containerFetch(request, defaultPort); WebSockets need that path, not a manual localhost URL.
+              const proxied = new Request(input.request, { headers });
+              return ready.container.fetch(switchPort(proxied, 8080));
             },
             catch: toContainerFailure('Container error, please retry in a moment.', true),
           })
