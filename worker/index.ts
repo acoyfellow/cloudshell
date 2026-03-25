@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { Context, ExecutionContext } from 'hono';
-import { Container, getContainer, switchPort } from '@cloudflare/containers';
+import { Container, getContainer } from '@cloudflare/containers';
 import {
   backupWorkspace,
   checkpointSession,
@@ -22,7 +22,7 @@ import {
   updateSession,
   prepareTerminalForWebSocketContext,
 } from './effect/programs';
-import { buildContainerWebSocketRequest, upgradeWebSocketResponse } from './effect/services';
+import { buildContainerWebSocketRequest } from './effect/services';
 import {
   runJsonRoute,
   runRequestEffect,
@@ -512,7 +512,7 @@ const app = createApp();
 
 /**
  * Guarded smoke route matching cloudflare/containers-demos/terminal worker:
- * `return await getContainer(binding).fetch(switchPort(request, 8080))` on the browser request (minus `secret` query).
+ * `return await getContainer(binding).fetch(request)` on the browser request (minus `secret` query); DO `defaultPort` is 8080.
  * Enable with TERMINAL_PARITY_SECRET in deploy env + second container in alchemy.run.ts.
  */
 async function handleTerminalParitySmoke(request: Request, env: Env): Promise<Response> {
@@ -529,8 +529,7 @@ async function handleTerminalParitySmoke(request: Request, env: Env): Promise<Re
   const forward = new Request(url.toString(), request);
   console.log('[terminal-parity] demo-shaped stub.fetch', { pathname: url.pathname });
   try {
-    const res = await getContainer(ns).fetch(switchPort(forward, 8080));
-    return upgradeWebSocketResponse(res);
+    return await getContainer(ns).fetch(forward);
   } catch (err) {
     console.error('[terminal-parity] stub.fetch threw', err);
     return toErrorResponse(
@@ -566,7 +565,7 @@ async function handleTerminalWebSocket(request: Request, env: Env): Promise<Resp
     const inner = buildContainerWebSocketRequest(request, prep.username, prep.sessionId, prep.tabId);
     let res: Response;
     try {
-      res = await prep.ready.container.fetch(switchPort(inner, 8080));
+      res = await prep.ready.container.fetch(inner);
     } catch (err) {
       console.error('[ws/terminal] DO stub.fetch threw', { ms: Date.now() - t0, err });
       return toErrorResponse(
@@ -588,7 +587,7 @@ async function handleTerminalWebSocket(request: Request, env: Env): Promise<Resp
       const peek = await res.clone().text().catch(() => '');
       console.log('[ws/terminal] non-upgrade response body', peek.slice(0, 400));
     }
-    return upgradeWebSocketResponse(res);
+    return res;
   } catch (error) {
     return toErrorResponse(error);
   }
