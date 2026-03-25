@@ -1,5 +1,6 @@
 import { dev } from '$app/environment';
 import { error, type RequestEvent } from '@sveltejs/kit';
+import { resolveTerminalWebSocketClientUrl } from '../../../shared/resolve-terminal-ws-url';
 import { createTerminalTicket } from '../../../shared/terminal-ticket';
 
 const DEFAULT_DEV_WORKER_ORIGIN = 'http://localhost:1338';
@@ -119,17 +120,10 @@ export async function resolveTerminalConnection(
     secret
   );
 
-  if (dev) {
-    const url = new URL('/ws/terminal', getWorkerOrigin(event));
-    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    url.searchParams.set('ticket', ticket);
-    return { url: url.toString(), mode: 'direct' };
-  }
-
-  // Same-origin WSS: browser → Pages `/ws/terminal` → `WORKER.fetch` → API worker (`proxyTerminalWebSocket`).
-  // Avoids cross-host upgrades (app vs api) which often surface as 1006 with little detail.
-  const url = new URL('/ws/terminal', event.url.origin);
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  url.searchParams.set('ticket', ticket);
-  return { url: url.toString(), mode: 'proxy' };
+  return resolveTerminalWebSocketClientUrl({
+    dev,
+    appOrigin: event.url.origin,
+    workerDevOrigin: getWorkerOrigin(event),
+    ticket,
+  });
 }
