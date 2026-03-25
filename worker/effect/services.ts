@@ -265,11 +265,33 @@ const AuthServiceLive = Layer.effect(
       requireTerminalIdentity: ({ userIdHeader, ticket }) =>
         Effect.gen(function* () {
           const userId = userIdHeader?.trim();
+          const token = ticket?.trim();
+
+          // Pages proxy sends X-User-Id + cookie auth but WS URL only has ?ticket= (no sessionId query).
+          // Still verify the ticket and take session/tab from the payload so we attach the right container.
+          if (userId && token) {
+            const payload = yield* Effect.tryPromise({
+              try: () => verifyTerminalTicket(token, env.TERMINAL_TICKET_SECRET),
+              catch: () => new Unauthorized({ message: 'Authentication required' }),
+            });
+
+            if (!payload || payload.userId !== userId) {
+              return yield* Effect.fail(
+                new Unauthorized({ message: 'Authentication required' })
+              );
+            }
+
+            return {
+              userId: payload.userId,
+              sessionId: payload.sessionId,
+              tabId: payload.tabId,
+            };
+          }
+
           if (userId) {
             return { userId };
           }
 
-          const token = ticket?.trim();
           if (!token) {
             return yield* Effect.fail(
               new Unauthorized({ message: 'Authentication required' })
