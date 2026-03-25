@@ -51,6 +51,21 @@ const Sandbox = await Container('sandbox', {
   },
 });
 
+/** Optional: cloudflare/containers-demos `terminal/` shaped Node `ws` host for `/terminal` smoke on the API worker. */
+const TerminalParity =
+  deployEnv.terminalParitySecret != null && deployEnv.terminalParitySecret.length > 0
+    ? await Container('terminal-parity', {
+        className: 'CloudShellParityTerminal',
+        scriptName: workerName,
+        maxInstances: 1,
+        adopt: true,
+        build: {
+          context: '.',
+          dockerfile: 'worker/parity-container/Dockerfile',
+        },
+      })
+    : undefined;
+
 export const WORKER = await Worker(workerName, {
   name: workerName,
   entrypoint: './worker/index.ts',
@@ -67,6 +82,12 @@ export const WORKER = await Worker(workerName, {
     R2_BUCKET_NAME: USER_DATA.name,
     R2_ACCOUNT_ID: deployEnv.accountId,
     PORT_FORWARD_BASE_DOMAIN: deployEnv.portForwardBaseDomain,
+    ...(TerminalParity != null
+      ? {
+          TerminalParity,
+          TERMINAL_PARITY_SECRET: deployEnv.terminalParitySecret!,
+        }
+      : {}),
   },
   url: false,
   ...(isLocalDevHostname

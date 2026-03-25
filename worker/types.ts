@@ -22,7 +22,11 @@ export interface Env {
   /** Hostname for `https://<port>-<id>.<domain>`; set from BETTER_AUTH_URL in alchemy.run.ts */
   PORT_FORWARD_BASE_DOMAIN: string;
   TERMINAL_TICKET_SECRET: string;
+  /** Present only when `TERMINAL_PARITY_SECRET` is set at deploy (smoke / Cloudflare-demo-shaped path). */
+  TERMINAL_PARITY_SECRET?: string;
   Sandbox: DurableObjectNamespace<Container>;
+  /** Optional: minimal Node `ws` container (containers-demos/terminal style). */
+  TerminalParity?: DurableObjectNamespace<Container>;
   USERS_KV: KVNamespace;
   USER_DATA: R2Bucket;
 }

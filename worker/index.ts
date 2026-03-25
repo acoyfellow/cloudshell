@@ -22,7 +22,7 @@ import {
   updateSession,
   prepareTerminalForWebSocketContext,
 } from './effect/programs';
-import { buildContainerWebSocketRequest } from './effect/services';
+import { buildContainerWebSocketRequest, upgradeWebSocketResponse } from './effect/services';
 import {
   runJsonRoute,
   runRequestEffect,
@@ -36,7 +36,24 @@ import { isContainerActiveStatus } from './tabs';
 import type { Env } from './types';
 
 // Export the Container class for Durable Object binding
-export { CloudShellTerminal, TerminalContainer, ShellContainer, CloudShellSandbox };
+export {
+  CloudShellTerminal,
+  TerminalContainer,
+  ShellContainer,
+  CloudShellSandbox,
+  CloudShellParityTerminal,
+};
+
+/** Minimal parity DO: cloudflare/containers-demos/terminal (Node `ws` on /terminal). */
+class CloudShellParityTerminal extends Container {
+  defaultPort = 8080;
+  sleepAfter = '30m';
+  enableInternet = true;
+
+  override async fetch(request: Request): Promise<Response> {
+    return await this.containerFetch(request, this.defaultPort);
+  }
+}
 
 class CloudShellTerminal extends Container {
   defaultPort = 8080;
@@ -493,6 +510,35 @@ function createApp() {
 
 const app = createApp();
 
+/**
+ * Guarded smoke route matching cloudflare/containers-demos/terminal worker:
+ * `return await getContainer(binding).fetch(switchPort(request, 8080))` on the browser request (minus `secret` query).
+ * Enable with TERMINAL_PARITY_SECRET in deploy env + second container in alchemy.run.ts.
+ */
+async function handleTerminalParitySmoke(request: Request, env: Env): Promise<Response> {
+  const secret = env.TERMINAL_PARITY_SECRET;
+  const ns = env.TerminalParity;
+  if (!secret || !ns) {
+    return new Response('Not found', { status: 404 });
+  }
+  const url = new URL(request.url);
+  if (url.searchParams.get('secret') !== secret) {
+    return new Response('Not found', { status: 404 });
+  }
+  url.searchParams.delete('secret');
+  const forward = new Request(url.toString(), request);
+  console.log('[terminal-parity] demo-shaped stub.fetch', { pathname: url.pathname });
+  try {
+    const res = await getContainer(ns).fetch(switchPort(forward, 8080));
+    return upgradeWebSocketResponse(res);
+  } catch (err) {
+    console.error('[terminal-parity] stub.fetch threw', err);
+    return toErrorResponse(
+      new UnexpectedFailure({ message: 'Parity container fetch failed', cause: err })
+    );
+  }
+}
+
 async function handleTerminalWebSocket(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   console.log('[ws/terminal] incoming (raw)', {
@@ -542,7 +588,7 @@ async function handleTerminalWebSocket(request: Request, env: Env): Promise<Resp
       const peek = await res.clone().text().catch(() => '');
       console.log('[ws/terminal] non-upgrade response body', peek.slice(0, 400));
     }
-    return res;
+    return upgradeWebSocketResponse(res);
   } catch (error) {
     return toErrorResponse(error);
   }
@@ -552,6 +598,15 @@ export { createApp };
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === '/terminal' && request.method === 'GET') {
+      if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
+        return new Response(
+          'WebSocket only: wss://<api-host>/terminal?secret=<TERMINAL_PARITY_SECRET> (optional parity smoke; set env + deploy)',
+          { status: 426, headers: { 'Content-Type': 'text/plain; charset=UTF-8' } }
+        );
+      }
+      return handleTerminalParitySmoke(request, env);
+    }
     if (url.pathname === '/ws/terminal' && request.method === 'GET') {
       if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
         return new Response('expected websocket', {
