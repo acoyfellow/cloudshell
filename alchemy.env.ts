@@ -12,6 +12,8 @@ const raw = z
     AWS_ACCESS_KEY_ID: z.string().optional(),
     AWS_SECRET_ACCESS_KEY: z.string().optional(),
     CI: z.string().optional(),
+    /** If set, deploys minimal Node `ws` parity container + guarded `/terminal` on the API worker. */
+    TERMINAL_PARITY_SECRET: z.string().optional(),
   })
   .parse(process.env);
 
@@ -40,4 +42,5 @@ export const deployEnv = {
   portForwardBaseDomain: new URL(betterAuthUrl).hostname,
   awsAccessKeyId: raw.AWS_ACCESS_KEY_ID ?? '',
   awsSecretAccessKey: raw.AWS_SECRET_ACCESS_KEY ?? '',
+  terminalParitySecret: raw.TERMINAL_PARITY_SECRET?.trim() || undefined,
 };

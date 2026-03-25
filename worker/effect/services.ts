@@ -183,35 +183,38 @@ function toContainerFailure(message: string, retryable: boolean) {
   };
 }
 
-/** DO → container: minimal path, no ticket query (JWT length breaks some internal hops). Session/tab come from X-* headers (main.go). */
+/**
+ * DO → container: same shape as agentcast-exploration CDP proxy — browser URL with path rewritten to
+ * `/ws/terminal`, full handshake headers forwarded, ticket stripped from query. Session/tab identity
+ * from validated `X-*` overrides (main.go).
+ */
 export function buildContainerWebSocketRequest(
   clientRequest: Request,
   username: string,
   sessionId: string,
   tabId: string
 ): Request {
-  const internal = new URL('/ws/terminal', 'http://127.0.0.1:8080');
-  const h = new Headers();
-  for (const name of [
-    'upgrade',
-    'connection',
-    'sec-websocket-key',
-    'sec-websocket-version',
-    'sec-websocket-protocol',
-    'sec-websocket-extensions',
-  ]) {
-    const v = clientRequest.headers.get(name);
-    if (v) {
-      h.set(name, v);
-    }
-  }
+  const containerUrl = new URL(clientRequest.url);
+  containerUrl.pathname = '/ws/terminal';
+  containerUrl.searchParams.delete('ticket');
+  containerUrl.searchParams.delete('sessionId');
+  containerUrl.searchParams.delete('tabId');
+
+  const h = new Headers(clientRequest.headers);
   h.set('X-User', username);
   h.set('X-Session-Id', sessionId);
   h.set('X-Tab-Id', tabId);
-  if (!h.has('sec-websocket-key') || !h.has('sec-websocket-version')) {
-    console.error('[ws/terminal] missing WS handshake headers on container request');
+
+  return new Request(containerUrl.toString(), { method: 'GET', headers: h });
+}
+
+/** Match exploration: return a fresh 101 Response with the DO `webSocket` so the client upgrade completes reliably. */
+export function upgradeWebSocketResponse(res: Response): Response {
+  const ws = (res as { webSocket?: WebSocket }).webSocket;
+  if (ws != null) {
+    return new Response(null, { status: 101, webSocket: ws });
   }
-  return new Request(internal, { method: 'GET', headers: h });
+  return res;
 }
 
 function runtimeAnnotations(context: RuntimeLogContext, containerId: string) {
@@ -935,7 +938,7 @@ const ContainerRuntimeLive = Layer.effect(
                 const peek = await res.clone().text().catch(() => '');
                 console.log('[ws/terminal] non-upgrade response body', peek.slice(0, 400));
               }
-              return res;
+              return upgradeWebSocketResponse(res);
             },
             catch: toContainerFailure('Container error, please retry in a moment.', true),
           })
