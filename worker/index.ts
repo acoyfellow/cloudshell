@@ -1,10 +1,9 @@
 import { Hono } from 'hono';
-import type { Context } from 'hono';
-import { Container, getContainer } from '@cloudflare/containers';
+import type { Context, ExecutionContext } from 'hono';
+import { Container, getContainer, switchPort } from '@cloudflare/containers';
 import {
   backupWorkspace,
   checkpointSession,
-  connectTerminal,
   createLegacyTab,
   createSession,
   createTab,
@@ -21,8 +20,17 @@ import {
   requireAuthorizedUsername,
   updateTab,
   updateSession,
+  prepareTerminalForWebSocketContext,
 } from './effect/programs';
-import { runJsonRoute, runRequestEffect, runRouteEffect, toRouteErrorResponse } from './effect/runtime';
+import { buildContainerWebSocketRequest } from './effect/services';
+import {
+  runJsonRoute,
+  runRequestEffect,
+  runRouteEffect,
+  toErrorResponse,
+  toRouteErrorResponse,
+} from './effect/runtime';
+import { UnexpectedFailure } from './effect/errors';
 import { getUserSessionContainerId, readWorkerIdentity } from './auth';
 import { isContainerActiveStatus } from './tabs';
 import type { Env } from './types';
@@ -153,35 +161,6 @@ function createApp() {
 
   // Health check
   app.get('/health', (c) => c.json({ status: 'ok' }));
-
-  // WebSocket terminal with Effect orchestration
-  app.get('/ws/terminal', (c) => {
-    const upgrade = c.req.header('Upgrade');
-    if (upgrade?.toLowerCase() !== 'websocket') {
-      return c.text('expected websocket', 426);
-    }
-
-    // Workers Logs (not Container stdout): confirms the request reached this worker before DO/container.
-    console.log('[ws/terminal] incoming', {
-      hasTicket: Boolean(c.req.query('ticket')),
-      querySessionId: c.req.query('sessionId') ?? null,
-      queryTabId: c.req.query('tabId') ?? null,
-      hasUserHeader: Boolean(c.req.header('X-User-Id')),
-    });
-
-    return runRouteEffect(
-      c,
-      connectTerminal({
-        request: c.req.raw,
-        upgrade,
-        userIdHeader: c.req.header('X-User-Id'),
-        ticket: c.req.query('ticket'),
-        requestedSessionId: c.req.query('sessionId'),
-        requestedTabId: c.req.query('tabId'),
-      }),
-      (response) => response
-    );
-  });
 
   // Session APIs
   app.get('/api/sessions', (c) => runJsonRoute(c, listSessions(c.req.header('X-User-Id'))));
@@ -514,5 +493,74 @@ function createApp() {
 
 const app = createApp();
 
+async function handleTerminalWebSocket(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  console.log('[ws/terminal] incoming (raw)', {
+    hasTicket: Boolean(url.searchParams.get('ticket')),
+    querySessionId: url.searchParams.get('sessionId'),
+    queryTabId: url.searchParams.get('tabId'),
+    hasUserHeader: Boolean(request.headers.get('X-User-Id')),
+  });
+
+  try {
+    // containers-demos/terminal: `return await getContainer(env.TERMINAL).fetch(request)` — no Effect around stub.fetch.
+    const prep = await runRequestEffect(
+      env,
+      prepareTerminalForWebSocketContext({
+        request,
+        upgrade: request.headers.get('Upgrade') ?? undefined,
+        userIdHeader: request.headers.get('X-User-Id'),
+        ticket: url.searchParams.get('ticket'),
+        requestedSessionId: url.searchParams.get('sessionId'),
+        requestedTabId: url.searchParams.get('tabId'),
+      })
+    );
+
+    const t0 = Date.now();
+    const inner = buildContainerWebSocketRequest(request, prep.username, prep.sessionId, prep.tabId);
+    let res: Response;
+    try {
+      res = await prep.ready.container.fetch(switchPort(inner, 8080));
+    } catch (err) {
+      console.error('[ws/terminal] DO stub.fetch threw', { ms: Date.now() - t0, err });
+      return toErrorResponse(
+        new UnexpectedFailure({
+          message: 'Container error, please retry in a moment.',
+          cause: err,
+        })
+      );
+    }
+
+    const ws = (res as { webSocket?: WebSocket }).webSocket;
+    console.log('[ws/terminal] direct stub.fetch', {
+      status: res.status,
+      hasWebSocket: ws != null,
+      ms: Date.now() - t0,
+      containerId: prep.ready.containerId,
+    });
+    if (res.status >= 400 || (res.status !== 101 && ws == null)) {
+      const peek = await res.clone().text().catch(() => '');
+      console.log('[ws/terminal] non-upgrade response body', peek.slice(0, 400));
+    }
+    return res;
+  } catch (error) {
+    return toErrorResponse(error);
+  }
+}
+
 export { createApp };
-export default app;
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname === '/ws/terminal' && request.method === 'GET') {
+      if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
+        return new Response('expected websocket', {
+          status: 426,
+          headers: { 'Content-Type': 'text/plain; charset=UTF-8' },
+        });
+      }
+      return handleTerminalWebSocket(request, env);
+    }
+    return app.fetch(request, env, ctx);
+  },
+};

@@ -22,7 +22,8 @@ export const requireAuthorizedUsername = (input: {
     return yield* auth.requireUsername(input);
   });
 
-export const connectTerminal = (input: {
+/** Auth, workspace, container readiness — no DO stub.fetch. Cloudflare terminal demo returns stub.fetch outside any framework; Effect breaks WS Responses. */
+export const prepareTerminalForWebSocketContext = (input: {
   readonly request: Request;
   readonly upgrade?: string;
   readonly userIdHeader?: string | null;
@@ -75,11 +76,31 @@ export const connectTerminal = (input: {
       tabs: selection.tabs,
     });
 
-    return yield* runtime.proxyTerminalRequest(ready, {
-      request: input.request,
+    return {
+      ready,
       username,
       sessionId: selection.session.id,
       tabId: selection.tab.id,
+    };
+  });
+
+/** Tests / legacy: full path including proxy inside Effect (WS Response may not survive). */
+export const connectTerminal = (input: {
+  readonly request: Request;
+  readonly upgrade?: string;
+  readonly userIdHeader?: string | null;
+  readonly ticket?: string | null;
+  readonly requestedSessionId?: string | null;
+  readonly requestedTabId?: string | null;
+}) =>
+  Effect.gen(function* () {
+    const ctx = yield* prepareTerminalForWebSocketContext(input);
+    const runtime = yield* ContainerRuntime;
+    return yield* runtime.proxyTerminalRequest(ctx.ready, {
+      request: input.request,
+      username: ctx.username,
+      sessionId: ctx.sessionId,
+      tabId: ctx.tabId,
     });
   });
 

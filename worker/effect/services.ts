@@ -177,7 +177,41 @@ function toPersistenceFailure(message: string) {
 }
 
 function toContainerFailure(message: string, retryable: boolean) {
-  return () => new ContainerUnavailable({ message, retryable });
+  return (cause: unknown) => {
+    console.error('[container]', message, { retryable, cause });
+    return new ContainerUnavailable({ message, retryable });
+  };
+}
+
+/** DO → container: minimal path, no ticket query (JWT length breaks some internal hops). Session/tab come from X-* headers (main.go). */
+export function buildContainerWebSocketRequest(
+  clientRequest: Request,
+  username: string,
+  sessionId: string,
+  tabId: string
+): Request {
+  const internal = new URL('/ws/terminal', 'http://127.0.0.1:8080');
+  const h = new Headers();
+  for (const name of [
+    'upgrade',
+    'connection',
+    'sec-websocket-key',
+    'sec-websocket-version',
+    'sec-websocket-protocol',
+    'sec-websocket-extensions',
+  ]) {
+    const v = clientRequest.headers.get(name);
+    if (v) {
+      h.set(name, v);
+    }
+  }
+  h.set('X-User', username);
+  h.set('X-Session-Id', sessionId);
+  h.set('X-Tab-Id', tabId);
+  if (!h.has('sec-websocket-key') || !h.has('sec-websocket-version')) {
+    console.error('[ws/terminal] missing WS handshake headers on container request');
+  }
+  return new Request(internal, { method: 'GET', headers: h });
 }
 
 function runtimeAnnotations(context: RuntimeLogContext, containerId: string) {
@@ -871,14 +905,37 @@ const ContainerRuntimeLive = Layer.effect(
           ready.containerId,
           Effect.tryPromise({
             try: async () => {
-              const headers = new Headers(input.request.headers);
-              headers.set('X-User', input.username);
-              headers.set('X-Session-Id', input.sessionId);
-              headers.set('X-Tab-Id', input.tabId);
-              // Match @cloudflare/containers: Container.fetch → containerFetch uses getTcpPort + request.url (https→http).
-              // containers-demos/terminal uses containerFetch(request, defaultPort); WebSockets need that path, not a manual localhost URL.
-              const proxied = new Request(input.request, { headers });
-              return ready.container.fetch(switchPort(proxied, 8080));
+              const t0 = Date.now();
+              const containerReq = buildContainerWebSocketRequest(
+                input.request,
+                input.username,
+                input.sessionId,
+                input.tabId
+              );
+              const switched = switchPort(containerReq, 8080);
+              let res: Response;
+              try {
+                res = await ready.container.fetch(switched);
+              } catch (err) {
+                console.error('[ws/terminal] DO stub.fetch threw', {
+                  containerId: ready.containerId,
+                  ms: Date.now() - t0,
+                  err,
+                });
+                throw err;
+              }
+              const ws = (res as { webSocket?: WebSocket }).webSocket;
+              console.log('[ws/terminal] DO stub.fetch result', {
+                containerId: ready.containerId,
+                status: res.status,
+                hasWebSocket: ws != null,
+                ms: Date.now() - t0,
+              });
+              if (res.status >= 400 || (res.status !== 101 && ws == null)) {
+                const peek = await res.clone().text().catch(() => '');
+                console.log('[ws/terminal] non-upgrade response body', peek.slice(0, 400));
+              }
+              return res;
             },
             catch: toContainerFailure('Container error, please retry in a moment.', true),
           })
