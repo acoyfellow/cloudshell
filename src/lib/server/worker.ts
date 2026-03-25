@@ -126,14 +126,10 @@ export async function resolveTerminalConnection(
     return { url: url.toString(), mode: 'direct' };
   }
 
-  const publicOrigin = event.platform?.env?.WORKER_PUBLIC_ORIGIN?.replace(/\/$/, '');
-  if (!publicOrigin) {
-    throw error(500, 'WORKER_PUBLIC_ORIGIN is not configured');
-  }
-
-  const url = new URL('/ws/terminal', publicOrigin);
-  url.protocol = 'wss:';
+  // Same-origin WSS: browser → Pages `/ws/terminal` → `WORKER.fetch` → API worker (`proxyTerminalWebSocket`).
+  // Avoids cross-host upgrades (app vs api) which often surface as 1006 with little detail.
+  const url = new URL('/ws/terminal', event.url.origin);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   url.searchParams.set('ticket', ticket);
-
-  return { url: url.toString(), mode: 'direct' };
+  return { url: url.toString(), mode: 'proxy' };
 }
