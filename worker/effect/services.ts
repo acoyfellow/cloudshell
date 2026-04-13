@@ -952,7 +952,7 @@ const ContainerRuntimeLive = Layer.effect(
               let res: Response;
               try {
                 res = await ready.container.fetch(containerReq);
-            } catch (err) {
+              } catch (err) {
                 console.error('[ws/terminal] DO stub.fetch threw', {
                   containerId: ready.containerId,
                   ms: Date.now() - t0,
