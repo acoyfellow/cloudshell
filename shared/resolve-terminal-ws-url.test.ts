@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import { resolveTerminalWebSocketClientUrl } from './resolve-terminal-ws-url';
 
 describe('resolveTerminalWebSocketClientUrl', () => {

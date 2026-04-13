@@ -18,7 +18,7 @@
     "db:studio": "drizzle-kit studio",
     "db:local": "wrangler d1 migrations apply cloudshell-db --local",
     "db:remote": "wrangler d1 migrations apply cloudshell-db --remote",
-    "test": "vitest run && bun test shared/",
+    "test": "vitest run",
     "test:watch": "vitest"
   },
   "devDependencies": {
