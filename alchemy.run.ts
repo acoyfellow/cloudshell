@@ -116,10 +116,12 @@ export const APP = await SvelteKit(`${projectName}-app`, {
   },
 });
 
-export const APP_DOMAIN = await CustomDomain(`${projectName}-app-domain`, {
-  name: deployEnv.portForwardBaseDomain,
-  workerName: APP.name,
-  adopt: true,
-});
+export const APP_DOMAIN = isLocalDevHostname
+  ? undefined
+  : await CustomDomain(`${projectName}-app-domain`, {
+      name: deployEnv.portForwardBaseDomain,
+      workerName: APP.name,
+      adopt: true,
+    });
 
 await project.finalize();
