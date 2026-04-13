@@ -70,6 +70,7 @@ export const WORKER = await Worker(workerName, {
   name: workerName,
   entrypoint: './worker/index.ts',
   compatibility: 'node',
+  compatibilityDate: '2026-04-07',
   adopt: true,
   observability: { enabled: true },
   bindings: {
@@ -100,6 +101,7 @@ export const WORKER = await Worker(workerName, {
 export const APP = await SvelteKit(`${projectName}-app`, {
   name: `${projectName}-app`,
   compatibility: 'node',
+  compatibilityDate: '2026-04-07',
   bindings: {
     DB,
     WORKER,
