@@ -105,6 +105,22 @@ bun run db:remote
 - Terminal access uses app-origin websocket routing in production and a signed direct-worker ticket in local dev.
 - `@xterm/xterm` and `@xterm/addon-fit` are bundled from npm. There is no CDN-loaded terminal dependency.
 
+### Terminal handshake contract
+
+The browser does not connect to the container directly.
+
+1. `src/routes/api/cloudshell/terminal-connection/+server.ts` issues a short-lived ticket for the active user, session, and tab.
+2. `src/routes/ws/terminal/+server.ts` proxies the websocket through `src/lib/server/worker.ts`.
+3. The app-host proxy validates the ticket and forwards the terminal identity headers to the worker hop:
+   - `X-User-Id`
+   - `X-User-Email`
+   - `X-Session-Id`
+   - `X-Tab-Id`
+4. `worker/effect/services.ts` forwards the same identity context into the container request.
+5. `worker/container/main.go` uses that user/session/tab identity to attach the correct terminal process.
+
+If any hop drops that identity, the browser typically sees a websocket close like `1006` instead of a usable terminal.
+
 ## Verification
 
 Before shipping changes:
