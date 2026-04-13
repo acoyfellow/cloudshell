@@ -1,7 +1,7 @@
 import { dev } from '$app/environment';
 import { error, type RequestEvent } from '@sveltejs/kit';
 import { resolveTerminalWebSocketClientUrl } from '../../../shared/resolve-terminal-ws-url';
-import { createTerminalTicket } from '../../../shared/terminal-ticket';
+import { createTerminalTicket, verifyTerminalTicket } from '../../../shared/terminal-ticket';
 
 const DEFAULT_DEV_WORKER_ORIGIN = 'http://localhost:1338';
 const PROD_WORKER_ORIGIN = 'http://worker';
@@ -88,12 +88,32 @@ export async function proxyWorkerRequest(
 }
 
 export async function proxyTerminalWebSocket(event: RequestEvent) {
-  const identity = getAuthenticatedIdentity(event);
   const headers = new Headers(event.request.headers);
-  headers.set('X-User-Id', identity.userId);
-  headers.set('X-User-Email', identity.userEmail);
   headers.delete('cookie');
   headers.delete('host');
+
+  const incomingUrl = new URL(event.request.url);
+  const ticket = incomingUrl.searchParams.get('ticket');
+  const secret =
+    event.platform?.env?.TERMINAL_TICKET_SECRET || event.platform?.env?.BETTER_AUTH_SECRET;
+  const identity = event.locals.user && event.locals.session ? getAuthenticatedIdentity(event) : null;
+
+  if (ticket && secret) {
+    const verified = await verifyTerminalTicket(ticket, secret);
+    if (!verified) {
+      throw error(401, 'Authentication required');
+    }
+
+    headers.set('X-User-Id', verified.userId);
+    if (verified.userEmail) {
+      headers.set('X-User-Email', verified.userEmail);
+    }
+    headers.set('X-Session-Id', verified.sessionId);
+    headers.set('X-Tab-Id', verified.tabId);
+  } else if (identity) {
+    headers.set('X-User-Id', identity.userId);
+    headers.set('X-User-Email', identity.userEmail);
+  }
 
   const upstream = new Request(buildWorkerUrl(event, '/ws/terminal'), {
     method: event.request.method,
@@ -105,8 +125,9 @@ export async function proxyTerminalWebSocket(event: RequestEvent) {
     appOrigin: event.url.origin,
     workerOrigin: getWorkerOrigin(event),
     hasUpgrade: event.request.headers.get('Upgrade')?.toLowerCase() === 'websocket',
-    hasTicket: Boolean(event.request.url.includes('ticket=')),
-    userId: identity.userId,
+    hasTicket: Boolean(ticket),
+    userId: identity?.userId ?? null,
+    identityMode: ticket ? 'ticket' : identity ? 'session' : 'none',
   });
   return fetchWorker(event, upstream);
 }
