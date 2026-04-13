@@ -455,6 +455,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	sessionID := sessionIDFromRequest(r)
 	tabID := tabIDFromRequest(r)
+	log.Printf("Terminal websocket request: user=%s session=%s tab=%s upgrade=%s origin=%s", username, sessionID, tabID, r.Header.Get("Upgrade"), r.Header.Get("Origin"))
 	rememberRuntimeContext(username, sessionID)
 
 	userHome := userHomeDir(username)
@@ -469,7 +470,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("WebSocket upgrade failed: %v", err)
+		log.Printf("WebSocket upgrade failed for %s/%s/%s: %v", username, sessionID, tabID, err)
 		return
 	}
 	defer ws.Close()
@@ -485,16 +486,21 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		fmt.Sprintf("HOME=%s", userHome),
 		"TERM=xterm-256color",
 	)
+	log.Printf("Starting tmux session %s for %s/%s/%s", sessionName, username, sessionID, tabID)
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
-		log.Printf("Failed to start PTY: %v", err)
+		log.Printf("Failed to start PTY for %s/%s/%s: %v", username, sessionID, tabID, err)
 		sendJSON(ws, ErrorMessage{Type: "error", Message: err.Error()})
 		return
 	}
 	defer ptmx.Close()
 
-	sendJSON(ws, ReadyMessage{Type: "ready"})
+	if ok := sendJSON(ws, ReadyMessage{Type: "ready"}); ok {
+		log.Printf("Sent ready to %s/%s/%s", username, sessionID, tabID)
+	} else {
+		log.Printf("Failed to send ready to %s/%s/%s", username, sessionID, tabID)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -515,16 +521,17 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			n, err := ptmx.Read(buf)
 			if err != nil {
 				if err != io.EOF {
-					log.Printf("PTY read error: %v", err)
+					log.Printf("PTY read error for %s/%s/%s: %v", username, sessionID, tabID, err)
 				}
 				return
 			}
 
 			if n > 0 {
 				if err := ws.WriteMessage(websocket.BinaryMessage, buf[:n]); err != nil {
-					log.Printf("WebSocket write error: %v", err)
+					log.Printf("WebSocket write error for %s/%s/%s: %v", username, sessionID, tabID, err)
 					return
 				}
+				log.Printf("PTY -> WS bytes=%d for %s/%s/%s", n, username, sessionID, tabID)
 			}
 		}
 	}()
@@ -542,7 +549,9 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			msgType, data, err := ws.ReadMessage()
 			if err != nil {
 				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-					log.Printf("WebSocket read error: %v", err)
+					log.Printf("WebSocket read error for %s/%s/%s: %v", username, sessionID, tabID, err)
+				} else {
+					log.Printf("WebSocket closed for %s/%s/%s: %v", username, sessionID, tabID, err)
 				}
 				return
 			}
@@ -552,6 +561,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				var resizeMsg ResizeMessage
 				if err := json.Unmarshal(data, &resizeMsg); err == nil && resizeMsg.Type == "resize" {
 					if resizeMsg.Cols > 0 && resizeMsg.Rows > 0 {
+						log.Printf("Resize %s/%s/%s => %dx%d", username, sessionID, tabID, resizeMsg.Cols, resizeMsg.Rows)
 						pty.Setsize(ptmx, &pty.Winsize{
 							Cols: uint16(resizeMsg.Cols),
 							Rows: uint16(resizeMsg.Rows),
@@ -559,8 +569,9 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			case websocket.BinaryMessage:
+				log.Printf("WS -> PTY bytes=%d for %s/%s/%s", len(data), username, sessionID, tabID)
 				if _, err := ptmx.Write(data); err != nil {
-					log.Printf("PTY write error: %v", err)
+					log.Printf("PTY write error for %s/%s/%s: %v", username, sessionID, tabID, err)
 					return
 				}
 			}
@@ -574,7 +585,8 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	go func() {
-		cmd.Wait()
+		err := cmd.Wait()
+		log.Printf("tmux process exited for %s/%s/%s: %v", username, sessionID, tabID, err)
 		cancel()
 	}()
 
@@ -584,7 +596,9 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	if cmd.ProcessState != nil {
 		exitCode = cmd.ProcessState.ExitCode()
 	}
-	sendJSON(ws, ExitMessage{Type: "exit", Code: exitCode})
+	if ok := sendJSON(ws, ExitMessage{Type: "exit", Code: exitCode}); ok {
+		log.Printf("Sent exit code %d for %s/%s/%s", exitCode, username, sessionID, tabID)
+	}
 
 	log.Printf("WebSocket connection closed for %s/%s/%s", username, sessionID, tabID)
 }

@@ -77,6 +77,13 @@ export async function proxyWorkerRequest(
   }
 
   const upstream = new Request(buildWorkerUrl(event, path), init);
+  console.log('[proxyWorkerRequest]', {
+    path,
+    method: event.request.method,
+    workerOrigin: getWorkerOrigin(event),
+    hasUpgrade: event.request.headers.get('Upgrade')?.toLowerCase() === 'websocket',
+    hasUserHeader: headers.has('X-User-Id'),
+  });
   return fetchWorker(event, upstream);
 }
 
@@ -93,8 +100,17 @@ export async function proxyTerminalWebSocket(event: RequestEvent) {
     headers,
   });
 
+  console.log('[proxyTerminalWebSocket]', {
+    method: event.request.method,
+    appOrigin: event.url.origin,
+    workerOrigin: getWorkerOrigin(event),
+    hasUpgrade: event.request.headers.get('Upgrade')?.toLowerCase() === 'websocket',
+    hasTicket: Boolean(event.request.url.includes('ticket=')),
+    userId: identity.userId,
+  });
   return fetchWorker(event, upstream);
 }
+
 
 export async function resolveTerminalConnection(
   event: RequestEvent,
