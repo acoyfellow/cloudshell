@@ -725,17 +725,6 @@ const ContainerRuntimeLive = Layer.effect(
       containerId: getUserSessionContainerId(username, sessionId),
     });
 
-    const logTerminalRequest = (
-      stage: string,
-      input: { readonly username: string; readonly sessionId: string; readonly tabId: string }
-    ) => {
-      console.log('[ws/terminal]', stage, {
-        containerId: getUserSessionContainerId(input.username, input.sessionId),
-        username: input.username,
-        sessionId: input.sessionId,
-        tabId: input.tabId,
-      });
-    };
 
     const restoreTabsBestEffort = (
       ready: ReadyContainer,
@@ -954,7 +943,6 @@ const ContainerRuntimeLive = Layer.effect(
           Effect.tryPromise({
             try: async () => {
               const t0 = Date.now();
-              logTerminalRequest('proxyTerminalRequest:start', input);
               const containerReq = buildContainerWebSocketRequest(
                 input.request,
                 input.username,

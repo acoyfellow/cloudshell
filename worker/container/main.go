@@ -455,7 +455,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	sessionID := sessionIDFromRequest(r)
 	tabID := tabIDFromRequest(r)
-	log.Printf("Terminal websocket request: user=%s session=%s tab=%s upgrade=%s origin=%s", username, sessionID, tabID, r.Header.Get("Upgrade"), r.Header.Get("Origin"))
+	log.Printf("Terminal websocket request: user=%s session=%s tab=%s", username, sessionID, tabID)
 	rememberRuntimeContext(username, sessionID)
 
 	userHome := userHomeDir(username)
@@ -486,7 +486,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		fmt.Sprintf("HOME=%s", userHome),
 		"TERM=xterm-256color",
 	)
-	log.Printf("Starting tmux session %s for %s/%s/%s", sessionName, username, sessionID, tabID)
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
@@ -496,11 +495,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	defer ptmx.Close()
 
-	if ok := sendJSON(ws, ReadyMessage{Type: "ready"}); ok {
-		log.Printf("Sent ready to %s/%s/%s", username, sessionID, tabID)
-	} else {
-		log.Printf("Failed to send ready to %s/%s/%s", username, sessionID, tabID)
-	}
+	sendJSON(ws, ReadyMessage{Type: "ready"})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -531,7 +526,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 					log.Printf("WebSocket write error for %s/%s/%s: %v", username, sessionID, tabID, err)
 					return
 				}
-				log.Printf("PTY -> WS bytes=%d for %s/%s/%s", n, username, sessionID, tabID)
 			}
 		}
 	}()
@@ -569,7 +563,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			case websocket.BinaryMessage:
-				log.Printf("WS -> PTY bytes=%d for %s/%s/%s", len(data), username, sessionID, tabID)
 				if _, err := ptmx.Write(data); err != nil {
 					log.Printf("PTY write error for %s/%s/%s: %v", username, sessionID, tabID, err)
 					return

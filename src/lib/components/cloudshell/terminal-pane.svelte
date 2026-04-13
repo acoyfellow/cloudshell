@@ -151,11 +151,9 @@ import LoadingPane from './loading-pane.svelte';
         return;
       }
 
-      console.log('[terminal] connecting', { sequence, url: payload.url, mode: payload.mode });
       const nextSocket = new WebSocket(payload.url);
       nextSocket.binaryType = 'arraybuffer';
       nextSocket.onopen = () => {
-        console.log('[terminal] socket open', { sequence });
         if (sequence !== reconnectSequence) {
           nextSocket.close();
           return;
@@ -172,21 +170,14 @@ import LoadingPane from './loading-pane.svelte';
           return;
         }
 
-        console.log('[terminal] socket message', {
-          sequence,
-          kind: typeof event.data,
-          size: event.data instanceof ArrayBuffer ? event.data.byteLength : String(event.data).length,
-        });
         writeTerminalPayload(event.data);
       };
       nextSocket.onerror = () => {
-        console.log('[terminal] socket error', { sequence });
         if (sequence === reconnectSequence) {
           controller.setTerminalStatus('disconnected', 'Unable to reach the terminal runtime.');
         }
       };
       nextSocket.onclose = (ev) => {
-        console.log('[terminal] socket close', { sequence, code: ev.code, reason: ev.reason, wasClean: ev.wasClean });
         if (sequence === reconnectSequence) {
           const detail =
             ev.code === 1000
