@@ -113,7 +113,12 @@ export async function proxyTerminalWebSocket(event: RequestEvent) {
     headers,
   });
 
-  return fetchWorker(event, upstream);
+  const response = await fetchWorker(event, upstream);
+  const websocket = (response as { webSocket?: WebSocket }).webSocket;
+  if (websocket) {
+    websocket.accept({ allowHalfOpen: true });
+  }
+  return response;
 }
 
 
