@@ -80,6 +80,22 @@ export async function proxyWorkerRequest(
   return fetchWorker(event, upstream);
 }
 
+async function proxyWebSocketPath(event: RequestEvent, upstreamPath: string) {
+  const headers = new Headers();
+  headers.set('Upgrade', 'websocket');
+  const upstream = new Request(buildWorkerUrl(event, upstreamPath), {
+    method: event.request.method,
+    headers,
+  });
+
+  const response = await fetchWorker(event, upstream);
+  const websocket = (response as { webSocket?: WebSocket }).webSocket;
+  if (websocket) {
+    websocket.accept();
+  }
+  return response;
+}
+
 export async function proxyTerminalWebSocket(event: RequestEvent) {
   const headers = new Headers(event.request.headers);
   headers.delete('cookie');
@@ -108,7 +124,8 @@ export async function proxyTerminalWebSocket(event: RequestEvent) {
     headers.set('X-User-Email', identity.userEmail);
   }
 
-  const upstream = new Request(buildWorkerUrl(event, '/ws/terminal'), {
+  const upstreamPath = incomingUrl.pathname === '/ws/hello' ? '/ws/hello' : '/ws/terminal';
+  const upstream = new Request(buildWorkerUrl(event, upstreamPath), {
     method: event.request.method,
     headers,
   });
@@ -116,9 +133,13 @@ export async function proxyTerminalWebSocket(event: RequestEvent) {
   const response = await fetchWorker(event, upstream);
   const websocket = (response as { webSocket?: WebSocket }).webSocket;
   if (websocket) {
-    websocket.accept({ allowHalfOpen: true });
+    websocket.accept();
   }
   return response;
+}
+
+export async function proxyHelloWebSocket(event: RequestEvent) {
+  return proxyWebSocketPath(event, '/ws/hello');
 }
 
 
@@ -151,5 +172,16 @@ export async function resolveTerminalConnection(
     appOrigin: event.url.origin,
     workerDevOrigin: getWorkerOrigin(event),
     ticket,
+    path: '/ws/terminal',
   });
+}
+
+export async function resolveHelloWebSocketConnection(event: RequestEvent): Promise<string> {
+  return resolveTerminalWebSocketClientUrl({
+    dev,
+    appOrigin: event.url.origin,
+    workerDevOrigin: getWorkerOrigin(event),
+    ticket: 'hello',
+    path: '/ws/hello',
+  }).url;
 }
