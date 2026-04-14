@@ -141,8 +141,8 @@ async function proxyWebSocketPath(event: RequestEvent, upstreamPath: string) {
 
   const pair = new WebSocketPair();
   const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
-  server.accept();
-  upstreamSocket.accept();
+  server.accept({ allowHalfOpen: true });
+  upstreamSocket.accept({ allowHalfOpen: true });
   relayWebSocket(server, upstreamSocket);
   relayWebSocket(upstreamSocket, server);
   return new Response(null, { status: 101, webSocket: client });
@@ -195,8 +195,8 @@ export async function proxyTerminalWebSocket(event: RequestEvent) {
 
   const pair = new WebSocketPair();
   const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
-  server.accept();
-  upstreamSocket.accept();
+  server.accept({ allowHalfOpen: true });
+  upstreamSocket.accept({ allowHalfOpen: true });
   relayWebSocket(server, upstreamSocket);
   relayWebSocket(upstreamSocket, server);
   return new Response(null, { status: 101, webSocket: client });
