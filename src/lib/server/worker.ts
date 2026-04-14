@@ -188,11 +188,18 @@ export async function proxyTerminalWebSocket(event: RequestEvent) {
   });
 
   const response = await fetchWorker(event, upstream);
-  const websocket = (response as { webSocket?: WebSocket }).webSocket;
-  if (websocket) {
-    websocket.accept();
+  const upstreamSocket = (response as { webSocket?: WebSocket }).webSocket;
+  if (!upstreamSocket) {
+    return response;
   }
-  return response;
+
+  const pair = new WebSocketPair();
+  const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
+  server.accept();
+  upstreamSocket.accept();
+  relayWebSocket(server, upstreamSocket);
+  relayWebSocket(upstreamSocket, server);
+  return new Response(null, { status: 101, webSocket: client });
 }
 
 export async function proxyHelloWebSocket(event: RequestEvent) {
