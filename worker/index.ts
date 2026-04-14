@@ -525,12 +525,46 @@ function handleHelloWebSocket(request: Request): Response {
 
   const websocketPair = new WebSocketPair();
   const [client, server] = Object.values(websocketPair) as [WebSocket, WebSocket];
-  server.accept({ allowHalfOpen: true });
+  server.accept();
   server.addEventListener('message', (event) => {
     const text = typeof event.data === 'string' ? event.data : String(event.data);
     server.send(`echo: ${text}`);
   });
   server.send('hello from worker');
+  return new Response(null, { status: 101, webSocket: client });
+}
+
+function handleTerminalProbeWebSocket(request: Request): Response {
+  if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
+    return new Response('expected websocket', {
+      status: 426,
+      headers: { 'Content-Type': 'text/plain; charset=UTF-8' },
+    });
+  }
+
+  const userId = request.headers.get('X-User-Id')?.trim();
+  const sessionId = request.headers.get('X-Session-Id')?.trim();
+  const tabId = request.headers.get('X-Tab-Id')?.trim();
+
+  if (!userId) {
+    return new Response('missing identity', { status: 401 });
+  }
+
+  const websocketPair = new WebSocketPair();
+  const [client, server] = Object.values(websocketPair) as [WebSocket, WebSocket];
+  server.accept();
+  server.send(
+    JSON.stringify({
+      type: 'terminal-probe-ready',
+      userId,
+      sessionId,
+      tabId,
+    })
+  );
+  server.addEventListener('message', (event) => {
+    const text = typeof event.data === 'string' ? event.data : String(event.data);
+    server.send(`probe-echo: ${text}`);
+  });
   return new Response(null, { status: 101, webSocket: client });
 }
 
@@ -627,6 +661,9 @@ export default {
     }
     if (url.pathname === '/ws/hello' && request.method === 'GET') {
       return handleHelloWebSocket(request);
+    }
+    if (url.pathname === '/ws/terminal-probe' && request.method === 'GET') {
+      return handleTerminalProbeWebSocket(request);
     }
     if (url.pathname === '/ws/terminal' && request.method === 'GET') {
       if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {

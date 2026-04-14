@@ -122,9 +122,19 @@ export async function proxyTerminalWebSocket(event: RequestEvent) {
   } else if (identity) {
     headers.set('X-User-Id', identity.userId);
     headers.set('X-User-Email', identity.userEmail);
+  } else if (incomingUrl.pathname === '/ws/terminal-probe') {
+    headers.set('X-User-Id', 'probe-user');
+    headers.set('X-User-Email', 'probe@example.com');
+    headers.set('X-Session-Id', 'probe-session');
+    headers.set('X-Tab-Id', 'probe-tab');
   }
 
-  const upstreamPath = incomingUrl.pathname === '/ws/hello' ? '/ws/hello' : '/ws/terminal';
+  const upstreamPath =
+    incomingUrl.pathname === '/ws/hello'
+      ? '/ws/hello'
+      : incomingUrl.pathname === '/ws/terminal-probe'
+        ? '/ws/terminal-probe'
+        : '/ws/terminal';
   const upstream = new Request(buildWorkerUrl(event, upstreamPath), {
     method: event.request.method,
     headers,
@@ -142,6 +152,9 @@ export async function proxyHelloWebSocket(event: RequestEvent) {
   return proxyWebSocketPath(event, '/ws/hello');
 }
 
+export async function proxyTerminalProbeWebSocket(event: RequestEvent) {
+  return proxyWebSocketPath(event, '/ws/terminal-probe');
+}
 
 export async function resolveTerminalConnection(
   event: RequestEvent,
