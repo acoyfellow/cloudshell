@@ -80,6 +80,50 @@ export async function proxyWorkerRequest(
   return fetchWorker(event, upstream);
 }
 
+function relayWebSocket(source: WebSocket, target: WebSocket) {
+  source.addEventListener('message', (event) => {
+    if (typeof event.data === 'string') {
+      target.send(event.data);
+      return;
+    }
+
+    if (event.data instanceof ArrayBuffer) {
+      target.send(event.data);
+      return;
+    }
+
+    if (event.data instanceof Blob) {
+      void event.data.arrayBuffer().then((buffer) => target.send(buffer));
+      return;
+    }
+
+    if (ArrayBuffer.isView(event.data)) {
+      target.send(
+        event.data.buffer.slice(event.data.byteOffset, event.data.byteOffset + event.data.byteLength)
+      );
+      return;
+    }
+
+    target.send(String(event.data));
+  });
+
+  source.addEventListener('close', (event) => {
+    try {
+      target.close(event.code, event.reason);
+    } catch {
+      // Ignore relay shutdown races.
+    }
+  });
+
+  source.addEventListener('error', () => {
+    try {
+      target.close(1011, 'websocket relay error');
+    } catch {
+      // Ignore relay shutdown races.
+    }
+  });
+}
+
 async function proxyWebSocketPath(event: RequestEvent, upstreamPath: string) {
   const headers = new Headers(event.request.headers);
   headers.delete('cookie');
@@ -90,11 +134,18 @@ async function proxyWebSocketPath(event: RequestEvent, upstreamPath: string) {
   });
 
   const response = await fetchWorker(event, upstream);
-  const websocket = (response as { webSocket?: WebSocket }).webSocket;
-  if (websocket) {
-    websocket.accept();
+  const upstreamSocket = (response as { webSocket?: WebSocket }).webSocket;
+  if (!upstreamSocket) {
+    return response;
   }
-  return response;
+
+  const pair = new WebSocketPair();
+  const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
+  server.accept();
+  upstreamSocket.accept();
+  relayWebSocket(server, upstreamSocket);
+  relayWebSocket(upstreamSocket, server);
+  return new Response(null, { status: 101, webSocket: client });
 }
 
 export async function proxyTerminalWebSocket(event: RequestEvent) {
