@@ -81,8 +81,9 @@ export async function proxyWorkerRequest(
 }
 
 async function proxyWebSocketPath(event: RequestEvent, upstreamPath: string) {
-  const headers = new Headers();
-  headers.set('Upgrade', 'websocket');
+  const headers = new Headers(event.request.headers);
+  headers.delete('cookie');
+  headers.delete('host');
   const upstream = new Request(buildWorkerUrl(event, upstreamPath), {
     method: event.request.method,
     headers,
@@ -122,11 +123,6 @@ export async function proxyTerminalWebSocket(event: RequestEvent) {
   } else if (identity) {
     headers.set('X-User-Id', identity.userId);
     headers.set('X-User-Email', identity.userEmail);
-  } else if (incomingUrl.pathname === '/ws/terminal-probe') {
-    headers.set('X-User-Id', 'probe-user');
-    headers.set('X-User-Email', 'probe@example.com');
-    headers.set('X-Session-Id', 'probe-session');
-    headers.set('X-Tab-Id', 'probe-tab');
   }
 
   const upstreamPath =

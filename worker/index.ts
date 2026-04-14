@@ -636,6 +636,9 @@ async function handleTerminalWebSocket(request: Request, env: Env): Promise<Resp
       ms: Date.now() - t0,
       containerId: prep.ready.containerId,
     });
+    if (ws) {
+      ws.accept();
+    }
     if (res.status >= 400 || (res.status !== 101 && ws == null)) {
       const peek = await res.clone().text().catch(() => '');
       console.log('[ws/terminal] non-upgrade response body', peek.slice(0, 400));
