@@ -665,6 +665,9 @@ export default {
     if (url.pathname === '/ws/hello' && request.method === 'GET') {
       return handleHelloWebSocket(request);
     }
+    if (url.pathname === '/ws/minimal' && request.method === 'GET') {
+      return handleHelloWebSocket(request);
+    }
     if (url.pathname === '/ws/terminal-probe' && request.method === 'GET') {
       return handleTerminalProbeWebSocket(request);
     }

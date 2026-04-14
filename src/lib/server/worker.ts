@@ -206,6 +206,10 @@ export async function proxyHelloWebSocket(event: RequestEvent) {
   return proxyWebSocketPath(event, '/ws/hello');
 }
 
+export async function proxyMinimalWebSocket(event: RequestEvent) {
+  return proxyWebSocketPath(event, '/ws/minimal');
+}
+
 export async function proxyTerminalProbeWebSocket(event: RequestEvent) {
   return proxyWebSocketPath(event, '/ws/terminal-probe');
 }

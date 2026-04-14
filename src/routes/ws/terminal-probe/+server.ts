@@ -1,4 +1,4 @@
 import type { RequestHandler } from './$types';
-import { proxyTerminalWebSocket } from '$lib/server/worker';
+import { proxyMinimalWebSocket } from '$lib/server/worker';
 
-export const GET: RequestHandler = async (event) => proxyTerminalWebSocket(event);
+export const GET: RequestHandler = async (event) => proxyMinimalWebSocket(event);
