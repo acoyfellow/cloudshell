@@ -515,6 +515,25 @@ const app = createApp();
  * `return await getContainer(binding).fetch(request)` on the browser request (minus `secret` query); DO `defaultPort` is 8080.
  * Enable with TERMINAL_PARITY_SECRET in deploy env + second container in alchemy.run.ts.
  */
+function handleHelloWebSocket(request: Request): Response {
+  if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
+    return new Response('expected websocket', {
+      status: 426,
+      headers: { 'Content-Type': 'text/plain; charset=UTF-8' },
+    });
+  }
+
+  const websocketPair = new WebSocketPair();
+  const [client, server] = Object.values(websocketPair) as [WebSocket, WebSocket];
+  server.accept({ allowHalfOpen: true });
+  server.addEventListener('message', (event) => {
+    const text = typeof event.data === 'string' ? event.data : String(event.data);
+    server.send(`echo: ${text}`);
+  });
+  server.send('hello from worker');
+  return new Response(null, { status: 101, webSocket: client });
+}
+
 async function handleTerminalParitySmoke(request: Request, env: Env): Promise<Response> {
   const secret = env.TERMINAL_PARITY_SECRET;
   const ns = env.TerminalParity;
@@ -605,6 +624,9 @@ export default {
         );
       }
       return handleTerminalParitySmoke(request, env);
+    }
+    if (url.pathname === '/ws/hello' && request.method === 'GET') {
+      return handleHelloWebSocket(request);
     }
     if (url.pathname === '/ws/terminal' && request.method === 'GET') {
       if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
