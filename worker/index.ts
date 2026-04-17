@@ -69,6 +69,17 @@ class CloudShellTerminal extends Container {
       R2_ACCOUNT_ID: env.R2_ACCOUNT_ID,
     };
   }
+
+  // Post-Containers GA (2026-04-13): WS upgrades to a DO-backed container require
+  // an explicit `containerFetch(request, port)` so the runtime knows which internal
+  // port to proxy the Upgrade handshake to. The default `Container.fetch` does not
+  // forward WS upgrades, which causes the browser to hang in CONNECTING (observed
+  // as "Attaching terminal…" forever; close code 1006 once the edge gives up).
+  // Mirrors the override on CloudShellParityTerminal, which has been our smoke test
+  // for the working shape.
+  override async fetch(request: Request): Promise<Response> {
+    return await this.containerFetch(request, this.defaultPort);
+  }
 }
 
 // Legacy classes for backwards compatibility with existing Durable Objects
