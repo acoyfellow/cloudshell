@@ -29,6 +29,94 @@ import LoadingPane from './loading-pane.svelte';
   let fitTimeout: number | null = null;
   let lastResizeKey = '';
 
+  // Auto-reconnect on stale close (container sleepAfter, network blip, wake-from-sleep).
+  // Exponential backoff up to a cap; reset on successful open.
+  let reconnectAttempt = 0;
+  let reconnectTimer: number | null = null;
+  let lastDisconnectReason = '';
+  const MAX_RECONNECT_ATTEMPTS = 6;
+
+  function computeBackoffMs(attempt: number): number {
+    // 500ms, 1s, 2s, 4s, 8s, 15s (capped)
+    return Math.min(500 * Math.pow(2, attempt), 15_000);
+  }
+
+  function scheduleReconnect() {
+    if (reconnectTimer !== null) return;
+    if (reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+      controller.setTerminalStatus(
+        'disconnected',
+        `Terminal connection lost${lastDisconnectReason ? ` — ${lastDisconnectReason}` : ''}. Click to retry.`
+      );
+      return;
+    }
+    const delay = computeBackoffMs(reconnectAttempt);
+    reconnectAttempt += 1;
+    controller.setTerminalStatus('connecting');
+    reconnectTimer = window.setTimeout(() => {
+      reconnectTimer = null;
+      void reconnectTerminal();
+    }, delay);
+  }
+
+  function cancelScheduledReconnect() {
+    if (reconnectTimer !== null) {
+      window.clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+  }
+
+  function resetReconnectBudget() {
+    reconnectAttempt = 0;
+    lastDisconnectReason = '';
+    cancelScheduledReconnect();
+  }
+
+  /**
+   * Server-side text frames carry JSON control messages, not terminal bytes.
+   * Handling them explicitly stops `{"type":"ready"}` (and error/exit) from
+   * rendering as literal text in the xterm canvas.
+   *
+   * Known types from worker/container/main.go:
+   *   - {type: "ready"}           first frame after pty.Start succeeds
+   *   - {type: "error", message}  pty startup failed
+   *   - {type: "exit", code}      shell exited
+   */
+  function handleControlMessage(text: string): boolean {
+    if (!text.startsWith('{')) return false;
+    let msg: any;
+    try {
+      msg = JSON.parse(text);
+    } catch {
+      return false;
+    }
+    if (!msg || typeof msg.type !== 'string') return false;
+    switch (msg.type) {
+      case 'ready':
+        // fresh PTY attached; make sure status is 'connected' (reconnect path)
+        controller.setTerminalStatus('connected');
+        resetReconnectBudget();
+        return true;
+      case 'error':
+        controller.setTerminalStatus(
+          'disconnected',
+          typeof msg.message === 'string' ? msg.message : 'Terminal error'
+        );
+        return true;
+      case 'exit':
+        // shell exited; show a friendly prompt, then let user click to reconnect
+        try {
+          terminal?.writeln(`\r\n[shell exited${typeof msg.code === 'number' ? ` code=${msg.code}` : ''}]`);
+        } catch {
+          // ignore
+        }
+        controller.setTerminalStatus('disconnected', 'Shell exited.');
+        return true;
+      default:
+        return false;
+    }
+  }
+
   function sendTerminalResize(force = false) {
     if (!browser || !terminal || !socket || socket.readyState !== WebSocket.OPEN) {
       return;
@@ -108,6 +196,14 @@ import LoadingPane from './loading-pane.svelte';
     }
 
     if (typeof payload === 'string') {
+      // Server-side text frames are JSON control messages (ready/error/exit),
+      // not terminal bytes. PTY bytes always arrive as binary frames. Route
+      // control messages through handleControlMessage so they don't render as
+      // literal text in the xterm canvas (pre-fix: `{"type":"ready"}` was
+      // visible at the top of every freshly attached terminal).
+      if (handleControlMessage(payload)) {
+        return;
+      }
       terminal.write(payload);
       controller.recordTerminalOutput(payload);
       return;
@@ -162,6 +258,7 @@ import LoadingPane from './loading-pane.svelte';
         socket = nextSocket;
         lastResizeKey = '';
         controller.setTerminalStatus('connected');
+        resetReconnectBudget();
         scheduleTerminalFit();
         scheduleTerminalFit(120);
       };
@@ -174,23 +271,35 @@ import LoadingPane from './loading-pane.svelte';
       };
       nextSocket.onerror = () => {
         if (sequence === reconnectSequence) {
-          controller.setTerminalStatus('disconnected', 'Unable to reach the terminal runtime.');
+          lastDisconnectReason = 'network error';
+          // Let onclose drive the reconnect policy — WebSocket always fires
+          // close after error. Avoid double-scheduling.
         }
       };
       nextSocket.onclose = (ev) => {
-        if (sequence === reconnectSequence) {
-          const detail =
-            ev.code === 1000
-              ? 'Terminal connection closed.'
-              : `Terminal connection closed (code ${ev.code}${ev.reason ? `: ${ev.reason}` : ''}).`;
-          controller.setTerminalStatus('disconnected', detail);
+        if (sequence !== reconnectSequence) {
+          return;
         }
+        // Clean user-initiated close: don't fight it.
+        if (ev.code === 1000) {
+          controller.setTerminalStatus('disconnected', 'Terminal connection closed.');
+          return;
+        }
+        // Anything else — container sleep, network blip, edge eviction — is
+        // recoverable. Let the user stay in the terminal and silently rebuild
+        // the socket. Status flips to 'connecting' during the attempt so the
+        // loading overlay shows instead of the scary "Terminal unavailable"
+        // error card. Budget exhausts after ~30s of retries (cap of 6).
+        lastDisconnectReason = ev.reason || `code ${ev.code}`;
+        scheduleReconnect();
       };
     } catch (error) {
       const message = (error as Error).message || 'Unable to create terminal connection';
       if (sequence === reconnectSequence) {
-        controller.setTerminalStatus('disconnected', message);
-        terminal.writeln(`\r\n[terminal unavailable] ${message}`);
+        lastDisconnectReason = message;
+        // Transient /api/cloudshell/terminal-connection failures (expired
+        // session, rolling deploy) also deserve a retry pass.
+        scheduleReconnect();
       }
     }
   }
@@ -238,23 +347,54 @@ import LoadingPane from './loading-pane.svelte';
       scheduleTerminalFit();
     };
 
+    // Wake-from-stale-tab handler: when the user comes back to the tab
+    // (classic "closed laptop / switched tabs for an hour" flow), either:
+    //   - the WebSocket is still OPEN: just re-fit (existing behavior)
+    //   - the WebSocket has CLOSED while we weren't looking: kick off a
+    //     reconnect immediately instead of waiting for a keypress.
+    // This is the "1006 on stale tab" fix — user doesn't need to reload.
+    const onVisibilityOrFocus = () => {
+      scheduleTerminalFit();
+      if (document.visibilityState !== 'visible') return;
+      const state = socket?.readyState;
+      if (state === WebSocket.OPEN) return;
+      if (state === WebSocket.CONNECTING) return;
+      // CLOSED, CLOSING, or no socket — reconnect. Reset budget so a fresh
+      // return to the tab gets the full retry allowance.
+      resetReconnectBudget();
+      void reconnectTerminal();
+    };
+
     resizeObserver = new ResizeObserver(() => {
       scheduleTerminalFit();
     });
     resizeObserver.observe(terminalElement!);
 
     window.addEventListener('resize', resize);
+    window.addEventListener('focus', onVisibilityOrFocus);
+    window.addEventListener('online', onVisibilityOrFocus);
     window.visualViewport?.addEventListener('resize', resize);
-    document.addEventListener('visibilitychange', resize);
+    document.addEventListener('visibilitychange', onVisibilityOrFocus);
     disposeResize = () => {
       window.removeEventListener('resize', resize);
+      window.removeEventListener('focus', onVisibilityOrFocus);
+      window.removeEventListener('online', onVisibilityOrFocus);
       window.visualViewport?.removeEventListener('resize', resize);
-      document.removeEventListener('visibilitychange', resize);
+      document.removeEventListener('visibilitychange', onVisibilityOrFocus);
       resizeObserver?.disconnect();
       resizeObserver = null;
     };
 
     await reconnectTerminal();
+  }
+
+  /**
+   * User-initiated retry. Exposed so the "Terminal unavailable" card can
+   * offer a Retry affordance once the auto-reconnect budget is exhausted.
+   */
+  function manualRetry() {
+    resetReconnectBudget();
+    void reconnectTerminal();
   }
 
   onMount(() => {
@@ -265,6 +405,7 @@ import LoadingPane from './loading-pane.svelte';
     void initializeTerminal();
 
     return () => {
+      cancelScheduledReconnect();
       socket?.close();
       terminal?.dispose();
       if (fitTimeout !== null) {
@@ -308,6 +449,13 @@ import LoadingPane from './loading-pane.svelte';
                 {controller.terminalError || 'The terminal could not connect.'}
               </p>
             </div>
+            <button
+              type="button"
+              class="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-3 py-1.5 text-sm font-medium"
+              onclick={manualRetry}
+            >
+              Reconnect
+            </button>
           </div>
         </div>
       {/if}
