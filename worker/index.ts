@@ -58,6 +58,10 @@ class CloudShellParityTerminal extends Container {
 class CloudShellTerminal extends Container {
   defaultPort = 8080;
   sleepAfter = '5m';
+  // Required post-GA (@cloudflare/containers >= 0.3.x) for tigrisfs to reach
+  // R2 during startup and for npm/git used inside the shell. Parity class
+  // already had this; the terminal class was missing it.
+  enableInternet = true;
 
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   constructor(ctx: DurableObjectState<{}>, env: Env) {
