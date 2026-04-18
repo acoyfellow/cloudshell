@@ -74,11 +74,4 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          # Bisect smoke path (2026-04-18): enables /terminal?secret=...
-          # pointing at CloudShellParityTerminal (minimal node+ws container).
-          # Used to distinguish "cloudshell image is broken" vs
-          # "Worker→Container path is broken" after Containers GA. The guard
-          # token isn't security-critical (just a query-string gate for a
-          # diagnostic echo endpoint). Rotate or unset when bisect is done.
-          TERMINAL_PARITY_SECRET: cs-parity-smoke-2026-04-18
         run: bun run deploy
