@@ -72,8 +72,9 @@ describe('connectTerminal', () => {
             getDefaultSession: () => Effect.die('unused'),
           }),
           Layer.succeed(ContainerRuntime, {
-            ensureTerminalReady: ({ sessionId, tabId }) => {
-              events.push(`ready:${sessionId}:${tabId}`);
+            ensureTerminalReady: () => Effect.die('unused'),
+            getTerminalHandle: ({ sessionId, tabId }) => {
+              events.push(`handle:${sessionId}:${tabId}`);
               return Effect.succeed({
                 container: {} as never,
                 containerId: 'shell:alice:main',
@@ -94,7 +95,9 @@ describe('connectTerminal', () => {
     const response = await Effect.runPromise(program);
 
     expect(await response.text()).toBe('proxied');
-    expect(events).toEqual(['auth', 'resolve', 'persist', 'ready:main:main', 'proxy']);
+    // Post-GA: WS path no longer prewarms (ensureTerminalReady). It uses
+    // getTerminalHandle and lets container.fetch() auto-start.
+    expect(events).toEqual(['auth', 'resolve', 'persist', 'handle:main:main', 'proxy']);
   });
 
   it('fails when no session selection can be resolved', async () => {
@@ -129,6 +132,7 @@ describe('connectTerminal', () => {
           }),
           Layer.succeed(ContainerRuntime, {
             ensureTerminalReady: () => Effect.die('unused'),
+            getTerminalHandle: () => Effect.die('unused'),
             proxyTerminalRequest: () => Effect.die('unused'),
             checkpointSession: () => Effect.succeed(true),
             deleteSessionRuntime: () => Effect.succeed(true),
