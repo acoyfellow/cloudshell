@@ -980,9 +980,9 @@ const ContainerRuntimeLive = Layer.effect(
                 hasWebSocket: ws != null,
                 ms: Date.now() - t0,
               });
-              if (ws) {
-                ws.accept();
-              }
+              // Do NOT call ws.accept() — Workers forbids accepting and then
+              // returning the same WebSocket in a Response. See
+              // handleTerminalWebSocket in worker/index.ts for the full note.
               if (res.status >= 400 || (res.status !== 101 && ws == null)) {
                 const peek = await res.clone().text().catch(() => '');
                 console.log('[ws/terminal] non-upgrade response body', peek.slice(0, 400));

@@ -651,9 +651,16 @@ async function handleTerminalWebSocket(request: Request, env: Env): Promise<Resp
       ms: Date.now() - t0,
       containerId: prep.ready.containerId,
     });
-    if (ws) {
-      ws.accept();
-    }
+    // Do NOT call ws.accept() here: the Workers runtime forbids accepting a
+    // WebSocket and then returning it in a Response (raises "Can't return
+    // WebSocket in a Response after calling accept()"). The Container base
+    // class has already configured the server-side end; we just relay the
+    // 101 Response (which carries the paired client-side WebSocket) back to
+    // the app-host proxy, which returns it to the browser.
+    //
+    // Pre-fix, this swallow-and-log path made the terminal appear connected
+    // (the 101 reached the browser) but no PTY bytes flowed because the
+    // server-side WebSocket got short-circuited by the spurious accept().
     if (res.status >= 400 || (res.status !== 101 && ws == null)) {
       const peek = await res.clone().text().catch(() => '');
       console.log('[ws/terminal] non-upgrade response body', peek.slice(0, 400));
