@@ -22,7 +22,29 @@ export const requireAuthorizedUsername = (input: {
     return yield* auth.requireUsername(input);
   });
 
-/** Auth, workspace, container readiness — no DO stub.fetch. Cloudflare terminal demo returns stub.fetch outside any framework; Effect breaks WS Responses. */
+/**
+ * Auth + workspace resolution + container handle (NO state precheck, NO waitForPort).
+ *
+ * Post-Containers-GA (2026-04-13, @cloudflare/containers >= 0.3):
+ *   getContainer(ns).fetch(request) auto-starts the container on demand. Explicit
+ *   getState() + waitForPort precheck became an anti-pattern: getState returns
+ *   status='running' even before an instance is booted, so isContainerActiveStatus
+ *   passes, we call waitForPort(8080), and the probe aborts with
+ *   "The container is not running, consider calling start()".
+ *
+ *   The parity demo at CloudShellParityTerminal does the correct shape:
+ *     return await getContainer(ns).fetch(request)
+ *   opens port 8080 in <400ms and relays the WebSocket upgrade cleanly.
+ *
+ *   We now do the same: return the ReadyContainer handle without prewarming.
+ *   buildContainerWebSocketRequest + container.fetch in proxyTerminalRequest will
+ *   trigger auto-start if the instance isn't running, and the Container base
+ *   class bridges the WS upgrade.
+ *
+ *   Session checkpointing and tab restoration, which genuinely need the container
+ *   to be up, remain in the session/tab endpoints and keep their prewarm via
+ *   ensureRuntimeContainer({ startIfStopped: true }).
+ */
 export const prepareTerminalForWebSocketContext = (input: {
   readonly request: Request;
   readonly upgrade?: string;
@@ -68,12 +90,12 @@ export const prepareTerminalForWebSocketContext = (input: {
       selection.tab.id
     );
 
-    const ready = yield* runtime.ensureTerminalReady({
-      route: '/ws/terminal',
+    // Return a handle without prewarming. container.fetch() in the WS path
+    // will auto-start the instance if needed (same shape as parity demo).
+    const ready = yield* runtime.getTerminalHandle({
       username,
       sessionId: selection.session.id,
       tabId: selection.tab.id,
-      tabs: selection.tabs,
     });
 
     return {
