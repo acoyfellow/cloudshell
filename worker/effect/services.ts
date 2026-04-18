@@ -134,6 +134,17 @@ interface ContainerRuntimeApi {
   readonly ensureTerminalReady: (
     input: RuntimeLogContext & { readonly tabs: Tab[] }
   ) => Effect.Effect<ReadyContainer, ContainerUnavailable>;
+  /**
+   * Return a ReadyContainer handle without any state precheck or waitForPort.
+   * Post-GA the Container base class auto-starts on .fetch(). Use this on the
+   * WebSocket path where we want the inner .fetch() to drive the lifecycle,
+   * same shape as the parity demo.
+   */
+  readonly getTerminalHandle: (input: {
+    readonly username: string;
+    readonly sessionId: string;
+    readonly tabId: string;
+  }) => Effect.Effect<ReadyContainer, never>;
   readonly proxyTerminalRequest: (
     ready: ReadyContainer,
     input: {
@@ -931,6 +942,8 @@ const ContainerRuntimeLive = Layer.effect(
         const ready = getReadyContainer(input.username, input.sessionId);
         return retryContainerReadiness(ready, input, Date.now(), 1);
       },
+      getTerminalHandle: (input) =>
+        Effect.succeed(getReadyContainer(input.username, input.sessionId)),
       proxyTerminalRequest: (ready, input) =>
         annotateRuntime(
           {
