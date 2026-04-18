@@ -121,6 +121,102 @@ The browser does not connect to the container directly.
 
 If any hop drops that identity, the browser typically sees a websocket close like `1006` instead of a usable terminal.
 
+### Post-Containers-GA deploy footgun (2026-04-18)
+
+If the terminal returns `1006` / "Terminal unavailable" indefinitely **after all five
+hops look healthy**, check the account's container applications inventory before
+spending more time in the code. This has bitten this project for a long time.
+
+The symptom:
+- Worker log shows `Error checking 8080: The operation was aborted` repeating
+- Runtime reports `"Container crashed while checking for ports, did you start the
+  container and setup the entrypoint correctly?"`
+- `wrangler tail` shows `Container state running attempt=1` / `attempt=2` but
+  `waitForPort` never resolves
+- A minimal parity container deployed alongside (see `worker/parity-container/`)
+  WORKS fine on the exact same Worker → DO path
+
+The cause:
+When the project has been redeployed across breaking changes — alchemy renames, DO
+class renames, package upgrades — the Cloudflare Containers control plane can end
+up with **stale container applications mapped to the same Durable Object class**
+as the live one. Symptoms on the inventory:
+- Multiple `cloudshell-*` apps for the same logical container
+- One or more apps reporting `instances > max_instances` (e.g. `9/5`)
+- Names from a prior code shape (e.g. `cloudshell-cloudshellterminal` when the
+  current code uses `Container('sandbox', ...)` which alchemy names
+  `cloudshell-sandbox-runner`)
+
+When this state exists, Docker pushes on new deploys succeed, but the DO class is
+still routing to a wedged old app. Changes to `Dockerfile`, `startup.sh`, Worker
+code, or the `@cloudflare/containers` package version do not take effect because
+the runtime is serving a stale image behind the scenes.
+
+Check and clean up:
+
+```bash
+# List all container apps on the account
+curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+  "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/containers/applications" \
+  | jq '.result[] | select(.name | startswith("cloudshell"))
+        | {name, id, instances, max: .max_instances}'
+```
+
+If you see duplicates, orphans, or `instances > max`, delete them:
+
+```bash
+curl -sS -X DELETE -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+  "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/containers/applications/<ID>"
+```
+
+Then redeploy — alchemy recreates the active app cleanly and the new image takes
+effect immediately.
+
+**Do not delete `cloudshell-sandbox-runner` if it is the only healthy app and
+your terminal works.** Only the orphans and the stuck entries.
+
+#### How this diagnosis was reached
+
+Having this as a documented pattern saves the next person the four-commit chase we
+did the first time:
+
+1. **Reproduced 1006 in prod.** WS hung in `readyState: 0 (CONNECTING)` for 10+ seconds, never opened.
+2. **Bisected with existing probe endpoints.** `/ws/hello`, `/ws/terminal-probe`,
+   `/ws/proxy-hello` all opened and echoed cleanly — confirming Browser→SvelteKit
+   and SvelteKit→Worker hops were fine. Only `/ws/terminal` failed.
+3. **Enabled `wrangler tail`.** Revealed the Worker-side failure:
+   `waitForPort(8080)` on the container DO kept aborting; `Container crashed
+   while checking for ports`.
+4. **Shipped three plausible fixes.** (a) `containerFetch(request, port)` override
+   missing on the terminal Container subclass (was genuinely required post-GA);
+   (b) `set -e` in `startup.sh` can abort before `exec /server`; (c) upgrade
+   `@cloudflare/containers 0.1.1 → ^0.3.2` + explicit `enableInternet = true`.
+   All correct changes. **None moved the tail output.** Identical failure pattern
+   after each deploy.
+5. **Enabled the parity container bisect.** Set `TERMINAL_PARITY_SECRET` in CI so
+   `CloudShellParityTerminal` (9-line Dockerfile, node + `ws`, no FUSE, no Go)
+   provisioned. Hit `wss://cloudshell-api.coey.dev/terminal?secret=...`. It
+   opened cleanly and responded with `parity-ready` in <400ms — tail showed
+   `Port 8080 is ready`. That conclusively proved the Worker→DO→container path
+   was healthy; the problem was inside the cloudshell image path.
+6. **Disabled FUSE entirely in `startup.sh`.** The only meaningful difference
+   between cloudshell and parity was FUSE + bash + Go. **Still same 1006.**
+   At this point nothing in the source tree could explain why code changes had
+   no effect on runtime behavior.
+7. **Inspected the account-level container apps inventory.** Found three
+   cloudshell-named apps, two with `instances > max_instances` (9/5 and 9/5),
+   one with a pre-refactor name (`cloudshell-cloudshellterminal`) that no
+   longer matches anything in the current `alchemy.run.ts`. That explained why
+   our committed code changes were being ignored: the DO class was still
+   serving traffic from a wedged historical container app that Alchemy's state
+   didn't know about.
+8. **Deleted the stale apps, redeployed.** Alchemy recreated the active app
+   clean, the new image took effect, and the terminal came back up.
+
+The tell for next time: **if code changes make it through CI and deploy, but
+the behavior in tail is byte-identical to before the change, suspect container
+state before suspecting code.**
+
 ## Verification
 
 Before shipping changes:
