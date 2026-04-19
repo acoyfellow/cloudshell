@@ -27,6 +27,12 @@ export interface Env {
   Sandbox: DurableObjectNamespace<Container>;
   /** Optional: minimal Node `ws` container (containers-demos/terminal style). */
   TerminalParity?: DurableObjectNamespace<Container>;
+  /**
+   * Per-user Agent DO holding that user's MCP OAuth connections + tokens.
+   * Namespace is keyed by Better Auth user ID (see worker/user-agent.ts).
+   * Added for cloudshell's MCP auth broker (see A.1 of the broker plan).
+   */
+  UserAgent: DurableObjectNamespace;
   USERS_KV: KVNamespace;
   USER_DATA: R2Bucket;
 }
