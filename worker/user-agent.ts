@@ -304,6 +304,43 @@ export class CloudshellUserAgent extends Agent<Env> {
       });
       throw new Error(`OAuth state rejected: ${stateCheck.error ?? 'unknown'}`);
     }
+    // `auth()` with an `authorizationCode` demands that
+    // provider.clientInformation() return something (i.e. the
+    // client_id from the earlier DCR register). Our Provider instance
+    // here is fresh — it has no in-memory clientId. We have to look
+    // it up from storage first.
+    //
+    // The client_info was saved by runAuthStart under the key
+    //   /${clientName}/${serverId}/${clientId}/client_info/
+    // Scan that prefix and pick the most-recently-registered client
+    // for this server. There SHOULD be exactly one (DCR is idempotent
+    // per (user, server) in our usage); if there are more, the latest
+    // wins.
+    const clientInfoPrefix = `/${CLIENT_NAME}/${params.serverId}/`;
+    const keys = await this.ctx.storage.list({ prefix: clientInfoPrefix });
+    let clientIdFromStorage: string | null = null;
+    for (const key of keys.keys()) {
+      // key format: /${clientName}/${serverId}/${clientId}/client_info/
+      const suffix = '/client_info/';
+      if (!key.endsWith(suffix)) continue;
+      const head = key.slice(0, -suffix.length);
+      const lastSlash = head.lastIndexOf('/');
+      if (lastSlash < 0) continue;
+      clientIdFromStorage = head.slice(lastSlash + 1);
+      // Keep scanning — the Map preserves insertion order, and the
+      // latest DCR register is what we want.
+    }
+    if (!clientIdFromStorage) {
+      console.error('[mcp] no stored clientId for serverId', {
+        serverId: params.serverId,
+        prefix: clientInfoPrefix,
+      });
+      throw new Error(
+        `No OAuth client registration found for ${params.serverId}. Run \`mcp login\` again.`
+      );
+    }
+    provider.clientId = clientIdFromStorage;
+
     let outcome: string;
     try {
       outcome = await auth(provider, {
