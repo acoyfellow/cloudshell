@@ -25,6 +25,17 @@
   import SessionSidebar from './session-sidebar.svelte';
   import TabDialog from './tab-dialog.svelte';
   import TerminalPane from './terminal-pane.svelte';
+  import TerminalPaneWterm from './terminal-pane-wterm.svelte';
+
+  /**
+   * Feature flag: ?terminal=wterm activates the wterm-based renderer
+   * (DOM-native, Cmd+F works, native selection, accessibility, real
+   * browser scrollbar). Default stays on xterm while the spike hardens.
+   * Evaluated once at mount; page reload required to switch.
+   */
+  const useWterm =
+    typeof window !== 'undefined' &&
+    new URL(window.location.href).searchParams.get('terminal') === 'wterm';
   import UtilityPane from './utility-pane.svelte';
   import LoadingPane from './loading-pane.svelte';
 
@@ -191,11 +202,19 @@
             {#if isMobile.current}
               <div class="flex h-full min-h-0 flex-1 overflow-hidden">
                 {#key `${controller.activeSessionId}-${controller.activeTabId}`}
-                  <TerminalPane
-                    {controller}
-                    sessionId={controller.activeSessionId}
-                    tabId={controller.activeTabId}
-                  />
+                  {#if useWterm}
+                    <TerminalPaneWterm
+                      {controller}
+                      sessionId={controller.activeSessionId}
+                      tabId={controller.activeTabId}
+                    />
+                  {:else}
+                    <TerminalPane
+                      {controller}
+                      sessionId={controller.activeSessionId}
+                      tabId={controller.activeTabId}
+                    />
+                  {/if}
                 {/key}
               </div>
             {:else}
@@ -206,11 +225,19 @@
                     minSize={48}
                   >
                     {#key `${controller.activeSessionId}-${controller.activeTabId}`}
-                      <TerminalPane
-                        {controller}
-                        sessionId={controller.activeSessionId}
-                        tabId={controller.activeTabId}
-                      />
+                      {#if useWterm}
+                        <TerminalPaneWterm
+                          {controller}
+                          sessionId={controller.activeSessionId}
+                          tabId={controller.activeTabId}
+                        />
+                      {:else}
+                        <TerminalPane
+                          {controller}
+                          sessionId={controller.activeSessionId}
+                          tabId={controller.activeTabId}
+                        />
+                      {/if}
                     {/key}
                   </ResizablePane>
                   {#if controller.utilityPaneOpen}
