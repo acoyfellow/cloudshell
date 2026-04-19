@@ -56,6 +56,14 @@ export class CloudshellOAuthClientProvider extends DurableObjectOAuthClientProvi
     return `${nonce}.${encodeServerId(serverId)}`;
   }
 
+  /**
+   * Fully re-implemented (NOT delegating to upstream). Upstream
+   * `checkState` is what we're working around — calling it with a
+   * plaintext serverId that has dots would still trip the same bug.
+   * Instead we duplicate the logic here: parse only at the first
+   * '.', decode the right half, look up the stored nonce record
+   * directly, validate serverId match + expiry.
+   */
   override async checkState(state: string): Promise<{
     valid: boolean;
     serverId?: string;
@@ -71,20 +79,38 @@ export class CloudshellOAuthClientProvider extends DurableObjectOAuthClientProvi
     if (decoded == null) {
       return { valid: false, error: 'Invalid state encoding' };
     }
-    // Delegate to upstream using the plaintext shape it expects.
-    return await super.checkState(`${nonce}.${decoded}`);
+    // Same storage key shape upstream uses.
+    const key = this.stateKey(nonce);
+    const stored = await this.storage.get<{
+      nonce: string;
+      serverId: string;
+      createdAt: number;
+    }>(key);
+    if (!stored) {
+      return { valid: false, error: 'State not found or already used' };
+    }
+    if (stored.serverId !== decoded) {
+      await this.storage.delete(key);
+      return { valid: false, error: 'State serverId mismatch' };
+    }
+    // Upstream's STATE_EXPIRATION_MS is 10 minutes.
+    const age = Date.now() - stored.createdAt;
+    if (age > 10 * 60 * 1000) {
+      await this.storage.delete(key);
+      return { valid: false, error: 'State expired' };
+    }
+    return { valid: true, serverId: decoded };
   }
 
+  /**
+   * Consume (burn) the state nonce. Same logic as upstream but we
+   * extract the nonce from our encoded format.
+   */
   override async consumeState(state: string): Promise<void> {
     const dot = state.indexOf('.');
-    if (dot <= 0) {
-      return super.consumeState(state);
-    }
+    if (dot <= 0) return;
     const nonce = state.slice(0, dot);
-    const encoded = state.slice(dot + 1);
-    const decoded = decodeServerId(encoded);
-    if (decoded == null) return super.consumeState(state);
-    return super.consumeState(`${nonce}.${decoded}`);
+    await this.storage.delete(this.stateKey(nonce));
   }
 }
 
