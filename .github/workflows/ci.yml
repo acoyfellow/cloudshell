@@ -38,15 +38,18 @@ jobs:
         run: bun run build
 
       - name: License check
-        # Python-2.0 is an OSI-approved permissive license; argparse@2.0.1
-        # (transitive dep of js-yaml) ships it in its manifest but the code
-        # itself is MIT-equivalent. Safe to allow.
+        # Allowlist notes:
+        # - Python-2.0: argparse@2.0.1 (via js-yaml → agents SDK). OSI-approved
+        #   permissive; argparse code itself is MIT-equivalent.
+        # - CC-BY-4.0: caniuse-lite (via browserslist → vite/svelte). This is
+        #   Creative Commons Attribution — data file, not code. Required by
+        #   essentially the entire modern JS build toolchain.
         run: >
           bunx license-checker
           --production
           --excludePrivatePackages
           --onlyAllow
-          'MIT;Apache-2.0;BSD-3-Clause;BSD-2-Clause;ISC;MIT-0;0BSD;Python-2.0;MIT OR Apache-2.0;BlueOak-1.0.0;LGPL-3.0-or-later;MPL-2.0;CC0-1.0;(MIT OR GPL-3.0-or-later);(MIT AND Zlib);MIT*'
+          'MIT;Apache-2.0;BSD-3-Clause;BSD-2-Clause;ISC;MIT-0;0BSD;Python-2.0;CC-BY-4.0;MIT OR Apache-2.0;BlueOak-1.0.0;LGPL-3.0-or-later;MPL-2.0;CC0-1.0;(MIT OR GPL-3.0-or-later);(MIT AND Zlib);MIT*'
 
   deploy:
     name: Deploy
