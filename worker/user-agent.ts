@@ -319,6 +319,20 @@ export class CloudshellUserAgent extends Agent<Env> {
     const existing = await this.findLatestStoredClientId(params.serverUrl);
     if (existing) {
       provider.clientId = existing;
+      // Upstream's saveCodeVerifier refuses to overwrite an existing
+      // verifier (intentional — protects a concurrent in-flight flow
+      // from corruption). But when we reuse a clientId from a
+      // previous FAILED attempt, the stale verifier from that attempt
+      // is still on disk, and saveCodeVerifier silently no-ops on
+      // the new one. Then cf-portal's /token endpoint rejects the
+      // exchange: "Invalid PKCE code_verifier" — the stored old
+      // verifier doesn't hash to the new challenge sent on this
+      // authorize URL.
+      //
+      // Clearing the verifier here lets auth() save a fresh one.
+      // Safe because runAuthStart is always user-initiated; there's
+      // no concurrent flow this can trample.
+      await provider.deleteCodeVerifier();
     }
     const outcome = await auth(provider, { serverUrl: params.serverUrl });
     if (outcome === 'AUTHORIZED') {
@@ -404,6 +418,16 @@ export class CloudshellUserAgent extends Agent<Env> {
         statusCode: e?.statusCode,
         body: e?.body,
       });
+      // Clear the stored code_verifier so the user's NEXT `mcp login`
+      // / Connect click isn't bitten by the no-overwrite guard in
+      // saveCodeVerifier. Without this, every failure permanently
+      // wedges that (user, server) pair until someone manually wipes
+      // the DO.
+      try {
+        await provider.deleteCodeVerifier();
+      } catch {
+        // best-effort; don't mask the original error
+      }
       throw err;
     }
     if (outcome !== 'AUTHORIZED') {
