@@ -468,16 +468,55 @@ export class CloudshellUserAgent extends Agent<Env> {
     const record = (await this.listConnections()).find(
       (c) => c.serverId === params.serverId
     );
-    if (!record) return null;
+    if (!record) {
+      console.error('[mcp] getAccessTokenFor: no connection record', {
+        serverId: params.serverId,
+      });
+      return null;
+    }
     const provider = this.provider({
       serverId: params.serverId,
       baseRedirectUrl: params.baseRedirectUrl,
     });
     provider.clientId = record.clientId;
+
+    // Diagnostic: check what's actually in storage BEFORE calling auth()
+    // so a null return tells us WHY — missing tokens, expired, missing
+    // client_info, mismatched clientId, etc.
+    const preClientInfo = await provider.clientInformation();
+    const preTokens = await provider.tokens();
+    console.log('[mcp] getAccessTokenFor pre-auth state', {
+      serverId: params.serverId,
+      storedClientId: record.clientId,
+      providerClientId: provider.clientId,
+      hasClientInfo: preClientInfo != null,
+      hasAccessToken: preTokens?.access_token != null,
+      hasRefreshToken: preTokens?.refresh_token != null,
+      expiresIn: preTokens?.expires_in,
+    });
+
     try {
       const outcome = await auth(provider, { serverUrl: params.serverId });
-      if (outcome !== 'AUTHORIZED') return null;
-    } catch {
+      if (outcome !== 'AUTHORIZED') {
+        console.error('[mcp] auth() did not authorize', {
+          serverId: params.serverId,
+          outcome,
+        });
+        return null;
+      }
+    } catch (err) {
+      const e = err as Error & {
+        message?: string;
+        statusCode?: number;
+        body?: unknown;
+      };
+      console.error('[mcp] auth() threw during token refresh', {
+        serverId: params.serverId,
+        errorName: e?.name,
+        errorMessage: e?.message,
+        statusCode: e?.statusCode,
+        body: e?.body,
+      });
       return null;
     }
     const tokens = await provider.tokens();
