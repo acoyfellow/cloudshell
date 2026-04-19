@@ -32,7 +32,12 @@ describe('terminal ticket primitive (identity-only, pre-capability)', () => {
       SECRET
     );
     const [body, sig] = ticket.split('.');
-    const tampered = `${body}.${sig.slice(0, -1)}A`;
+    // Flip the last char to a DIFFERENT value in base64url alphabet so the
+    // tampering is guaranteed. The original impl (append 'A') was flaky:
+    // if the sig naturally ended in 'A', the tampered value was identical.
+    const last = sig.slice(-1);
+    const replacement = last === 'A' ? 'B' : 'A';
+    const tampered = `${body}.${sig.slice(0, -1)}${replacement}`;
     expect(await verifyTerminalTicket(tampered, SECRET)).toBeNull();
   });
 

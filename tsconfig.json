@@ -21,7 +21,11 @@
 		"alchemy.run.ts",
 		"worker/**/*"
 	],
-	"exclude": ["old/**/*", 		"worker/**/*.test.ts",
+	"exclude": [
+		"old/**/*",
+		"worker/**/*.test.ts",
 		"shared/**/*.test.ts",
-"worker/parity-container/**"]
+		"worker/parity-container/**",
+		"worker/container/**"
+	]
 }

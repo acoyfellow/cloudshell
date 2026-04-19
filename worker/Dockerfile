@@ -57,6 +57,15 @@ RUN mkdir -p /opt/cloudshell /home/user
 COPY worker/.tmux.conf /opt/cloudshell/.tmux.conf
 RUN chown user:user /opt/cloudshell/.tmux.conf /home/user
 
+# cloudshell `mcp` CLI — zero-dep node script. Pre-installed so the
+# user doesn't pay a 5-minute `npm install -g` on first use. See
+# worker/container/mcp-cli.mjs for the source; the CLI reads a bridge
+# ticket from $CLOUDSHELL_BRIDGE_TICKET or ~/.cloudshell/bridge-ticket
+# and proxies all MCP tool calls through cloudshell.coey.dev so the
+# container never holds upstream OAuth tokens.
+COPY worker/container/mcp-cli.mjs /usr/local/bin/mcp
+RUN chmod +x /usr/local/bin/mcp
+
 COPY worker/startup.sh /startup.sh
 RUN chmod +x /startup.sh
 
