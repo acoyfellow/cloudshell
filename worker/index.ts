@@ -33,7 +33,7 @@ import {
 import { UnexpectedFailure } from './effect/errors';
 import { getUserSessionContainerId, readWorkerIdentity } from './auth';
 import { isContainerActiveStatus } from './tabs';
-import { startOAuth, completeOAuth } from './mcp-oauth';
+import { startOAuth, completeOAuth, listConnections } from './mcp-oauth';
 import type { Env } from './types';
 
 // Re-export the user-agent DO so alchemy can bind it as a Durable Object
@@ -252,6 +252,23 @@ function createApp() {
         redirectUrl: body.redirectUrl,
       });
       return c.json(result);
+    } catch (error) {
+      return toRouteErrorResponse(c, error);
+    }
+  });
+
+  /**
+   * List the MCP servers the authenticated user has connected. The APP
+   * forwards here after validating the bridge ticket (see
+   * src/lib/server/mcp-bridge-auth.ts). Trusts X-User-Id; returns
+   * only public metadata (serverId + connectedAt), never tokens.
+   */
+  app.get('/mcp/connections', async (c) => {
+    try {
+      const userId = c.req.header('X-User-Id');
+      if (!userId) return c.json({ error: 'X-User-Id required' }, 401);
+      const connections = await listConnections(c.env, userId);
+      return c.json({ connections });
     } catch (error) {
       return toRouteErrorResponse(c, error);
     }
