@@ -56,11 +56,28 @@ export interface CallbackOAuthResult {
   readonly serverUrl: string;
 }
 
-/** Extract `serverId` from an OAuth state string (format: `nonce.serverId`). */
+/**
+ * Extract `serverId` from an OAuth state string.
+ *
+ * Format produced by CloudshellOAuthClientProvider.state():
+ *   `${nonce}.${base64url(serverId)}`
+ *
+ * We have to base64url-encode the serverId because the stock agents
+ * SDK provider splits state on '.' and rejects anything that
+ * produces more than 2 parts — real MCP server URLs like
+ * https://portal.mcp.cfdata.org/mcp contain many dots and would
+ * always fail checkState. See worker/user-agent.ts CloudshellOAuthClientProvider.
+ */
 export function parseServerIdFromState(state: string): string | null {
   const dot = state.indexOf('.');
   if (dot <= 0 || dot === state.length - 1) return null;
-  return state.slice(dot + 1);
+  const encoded = state.slice(dot + 1);
+  try {
+    const padded = encoded.replace(/-/g, '+').replace(/_/g, '/');
+    return atob(padded);
+  } catch {
+    return null;
+  }
 }
 
 /**

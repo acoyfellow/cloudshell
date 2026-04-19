@@ -27,6 +27,80 @@ import { DurableObjectOAuthClientProvider } from 'agents/mcp/do-oauth-client-pro
 import { auth } from '@modelcontextprotocol/sdk/client/auth.js';
 import type { Env } from './types';
 
+/**
+ * Upstream `DurableObjectOAuthClientProvider.state()` composes OAuth
+ * state as `${nonce}.${serverId}`, then `checkState()` parses it with
+ * `state.split('.')` and rejects any result whose length isn't 2.
+ *
+ * That's fine when serverId is a single word, but MCP server URLs
+ * like `https://portal.mcp.cfdata.org/mcp` contain many dots — every
+ * real callback into checkState returns `{ valid: false, error:
+ * 'Invalid state format' }` and the exchange fails with a 500.
+ *
+ * We override state() and checkState() to base64url-encode the
+ * serverId, so the only `.` in the composed state is the separator.
+ * Stored nonce record + key format are untouched, so this is
+ * backwards-compatible with any already-persisted state rows.
+ */
+export class CloudshellOAuthClientProvider extends DurableObjectOAuthClientProvider {
+  override async state(): Promise<string> {
+    // Reuse the upstream state() to get the stored row + raw state
+    // string, then rewrite the serverId portion. Cheaper than
+    // reimplementing; still correct because we only touch the return
+    // value's encoding, not what's saved to storage.
+    const raw = await super.state();
+    const dot = raw.indexOf('.');
+    if (dot <= 0) return raw;
+    const nonce = raw.slice(0, dot);
+    const serverId = raw.slice(dot + 1);
+    return `${nonce}.${encodeServerId(serverId)}`;
+  }
+
+  override async checkState(state: string): Promise<{
+    valid: boolean;
+    serverId?: string;
+    error?: string;
+  }> {
+    const dot = state.indexOf('.');
+    if (dot <= 0 || dot === state.length - 1) {
+      return { valid: false, error: 'Invalid state format' };
+    }
+    const nonce = state.slice(0, dot);
+    const encoded = state.slice(dot + 1);
+    const decoded = decodeServerId(encoded);
+    if (decoded == null) {
+      return { valid: false, error: 'Invalid state encoding' };
+    }
+    // Delegate to upstream using the plaintext shape it expects.
+    return await super.checkState(`${nonce}.${decoded}`);
+  }
+
+  override async consumeState(state: string): Promise<void> {
+    const dot = state.indexOf('.');
+    if (dot <= 0) {
+      return super.consumeState(state);
+    }
+    const nonce = state.slice(0, dot);
+    const encoded = state.slice(dot + 1);
+    const decoded = decodeServerId(encoded);
+    if (decoded == null) return super.consumeState(state);
+    return super.consumeState(`${nonce}.${decoded}`);
+  }
+}
+
+function encodeServerId(serverId: string): string {
+  return btoa(serverId).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function decodeServerId(encoded: string): string | null {
+  try {
+    const padded = encoded.replace(/-/g, '+').replace(/_/g, '/');
+    return atob(padded);
+  } catch {
+    return null;
+  }
+}
+
 export const CLIENT_NAME = 'cloudshell';
 
 /**
@@ -67,8 +141,8 @@ export class CloudshellUserAgent extends Agent<Env> {
   provider(params: {
     readonly serverId: string;
     readonly baseRedirectUrl: string;
-  }): DurableObjectOAuthClientProvider {
-    const provider = new DurableObjectOAuthClientProvider(
+  }): CloudshellOAuthClientProvider {
+    const provider = new CloudshellOAuthClientProvider(
       this.ctx.storage,
       CLIENT_NAME,
       params.baseRedirectUrl
