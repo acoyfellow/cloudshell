@@ -298,17 +298,49 @@
   <link rel="stylesheet" href="/wterm.css" />
 </svelte:head>
 
+<style>
+  /*
+   * Theme overrides for wterm.
+   *
+   * wterm.css ships sensible defaults, but we want:
+   *   - full-bleed inside the pane (no padding, border-radius, shadow)
+   *   - our monospace stack
+   *   - black background, bone foreground (matches xterm theme)
+   *
+   * Targeting :global(.wterm) because wterm adds that class to our
+   * host div at init. The scoped style wouldn't reach it otherwise.
+   */
+  :global(.wterm-host.wterm) {
+    --term-font-family: "IBM Plex Mono", "SFMono-Regular", ui-monospace, monospace;
+    --term-font-size: 13px;
+    --term-line-height: 1.3;
+    --term-row-height: 17px;
+    --term-bg: #000000;
+    --term-fg: #f2efe8;
+    --term-cursor: #f7f4ed;
+
+    padding: 8px;
+    border-radius: 0;
+    box-shadow: none;
+  }
+</style>
+
 {#if sessionId && tabId}
   <div
     class="relative flex h-full min-h-0 flex-1 overflow-hidden rounded-none shadow-none"
     style:background={TERMINAL_BACKGROUND}
   >
+    <!--
+      wterm's DOM renderer adds the `.wterm` class to this element on init
+      and owns its own layout (padding, overflow, row height, measured char
+      width). We only override the CSS variables for our theme \u2014 do NOT set
+      inline font-family/size/color on this div, or wterm's char-width
+      measurement sees something inconsistent with the rendered rows and
+      pickling is off by a factor of 10 (1 col shown instead of ~100).
+    -->
     <div
       bind:this={terminalElement}
-      class="absolute inset-0 min-h-0 min-w-0 overflow-auto"
-      style:color="#f2efe8"
-      style:font-family='"IBM Plex Mono", "SFMono-Regular", ui-monospace, monospace'
-      style:font-size="13px"
+      class="absolute inset-0 wterm-host"
     ></div>
 
     {#if controller.terminalStatus !== 'connected'}
