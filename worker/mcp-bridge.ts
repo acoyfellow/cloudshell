@@ -25,7 +25,6 @@
  *   - Upstream returns any status → forwarded as-is
  */
 
-import { auth } from '@modelcontextprotocol/sdk/client/auth.js';
 import { CloudshellUserAgent } from './user-agent';
 import type { Env } from './types';
 
@@ -35,15 +34,10 @@ function getUserAgent(env: Env, userId: string) {
 }
 
 /**
- * Resolve the current access token for (userId, serverUrl). Drives
- * the MCP SDK's auth() which will automatically refresh if the stored
- * refresh_token is still valid. Returns null if the user has no
- * connection or the access token can't be obtained (caller should
- * surface 401 and prompt re-login).
- *
- * `baseRedirectUrl` is passed only to satisfy the provider's
- * constructor — no redirect actually happens on this path, we're
- * using the provider purely for its token storage + refresh logic.
+ * Resolve the current access token for (userId, serverUrl) by asking
+ * the DO directly. We MUST run the `auth()` flow + `provider.tokens()`
+ * inside the DO (see CloudshellUserAgent.getAccessTokenFor) because
+ * provider instances don't survive RPC serialization.
  */
 async function getAccessToken(
   env: Env,
@@ -52,32 +46,10 @@ async function getAccessToken(
   baseRedirectUrl: string
 ): Promise<string | null> {
   const agent = getUserAgent(env, userId);
-  const connections = await (agent as any).listConnections();
-  const match = (connections as Array<{ serverId: string; clientId: string }>).find(
-    (c) => c.serverId === serverUrl
-  );
-  if (!match) return null;
-
-  const provider = await (agent as any).provider({
+  return await (agent as any).getAccessTokenFor({
     serverId: serverUrl,
     baseRedirectUrl,
   });
-  provider.clientId = match.clientId;
-
-  // auth() will refresh the token if expired; for our purposes we
-  // want AUTHORIZED or nothing. If it needs to redirect the user for
-  // re-consent, treat that as "no token available."
-  try {
-    const outcome = await auth(provider, { serverUrl });
-    if (outcome !== 'AUTHORIZED') return null;
-  } catch {
-    // Refresh failed, client creds invalid, etc. — caller surfaces
-    // 401 so the CLI can prompt a fresh login.
-    return null;
-  }
-
-  const tokens = await provider.tokens();
-  return tokens?.access_token ?? null;
 }
 
 export interface BridgeRequestInput {

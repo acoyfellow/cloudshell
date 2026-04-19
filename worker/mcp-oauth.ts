@@ -17,7 +17,6 @@
  * (cloudshell.coey.dev), the Worker stays an RPC-ish backend.
  */
 
-import { auth } from '@modelcontextprotocol/sdk/client/auth.js';
 import { CloudshellUserAgent } from './user-agent';
 import type { Env } from './types';
 
@@ -58,7 +57,7 @@ export interface CallbackOAuthResult {
 }
 
 /** Extract `serverId` from an OAuth state string (format: `nonce.serverId`). */
-function parseServerIdFromState(state: string): string | null {
+export function parseServerIdFromState(state: string): string | null {
   const dot = state.indexOf('.');
   if (dot <= 0 || dot === state.length - 1) return null;
   return state.slice(dot + 1);
@@ -104,13 +103,10 @@ function getUserAgent(env: Env, userId: string) {
 
 /**
  * Start an OAuth authorization code flow for `serverUrl` on behalf of
- * `userId`. The provider performs discovery (well-known metadata),
- * DCR if the server advertises it, PKCE challenge generation, and
- * produces an authorize URL the user's browser must visit.
- *
- * Returns `{status: 'already_connected'}` if the provider already has
- * valid tokens for this user+server pair. Callers can use that to skip
- * the popup entirely.
+ * `userId`. All the real work (discovery, DCR, PKCE) happens inside
+ * the DO — we can't call provider methods from the Worker because
+ * the returned object would be an RPC stub that strips methods.
+ * See `CloudshellUserAgent.runAuthStart` for details.
  */
 export async function startOAuth(
   env: Env,
@@ -118,55 +114,15 @@ export async function startOAuth(
   input: StartOAuthInput
 ): Promise<StartOAuthResult> {
   const agent = getUserAgent(env, userId);
-  // The provider state + per-server namespacing is encoded via
-  // `serverId` on the provider instance. We use the serverUrl as the
-  // serverId — unique per target server, stable across attempts, and
-  // safely embeddable in state nonces (it rides in state as a suffix).
-  const serverId = input.serverUrl;
-
-  // Calling RPC methods on an Agent-shaped DO through a stub is the
-  // standard agents SDK pattern. We ask the DO to hand back a provider
-  // bound to its own storage; the storage round-trips via the ctx so
-  // everything we save here is durable.
-  //
-  // Today agents@0.11 exposes the provider only when we create it in
-  // worker code and pass the DO's storage. That's what the DO's
-  // `provider()` method does — we call it here, but the provider
-  // actually hitting storage happens when auth() calls its methods.
-  //
-  // Because auth() drives the provider through many round-trips, and
-  // each provider method hits the DO, we want to keep calls efficient;
-  // that's why the provider is thin and stateless except for the
-  // in-memory authUrl/clientId/serverId fields.
-  const provider = await (agent as any).provider({
-    serverId,
+  return (await (agent as any).runAuthStart({
+    serverUrl: input.serverUrl,
     baseRedirectUrl: input.redirectUrl,
-  });
-
-  const outcome = await auth(provider, { serverUrl: input.serverUrl });
-  if (outcome === 'AUTHORIZED') {
-    return { status: 'already_connected' };
-  }
-  if (outcome === 'REDIRECT') {
-    const authorizeUrl = provider.authUrl;
-    if (!authorizeUrl) {
-      throw new Error('OAuth provider did not produce an authorize URL');
-    }
-    return { status: 'redirect', authorizeUrl };
-  }
-  // auth() returns only AUTHORIZED or REDIRECT per MCP SDK impl.
-  throw new Error(`Unexpected auth() outcome: ${String(outcome)}`);
+  })) as StartOAuthResult;
 }
 
 /**
  * Complete a pending OAuth flow by exchanging `code` for tokens.
- * The provider validates `state` against the stored nonce (10-minute
- * expiry), retrieves the matching code_verifier, and persists tokens
- * on success.
- *
- * On success also records the connection in the user's connection
- * index so later listings / disconnect flows don't need to scan
- * provider keys.
+ * Also runs inside the DO (see runAuthCallback for why).
  */
 export async function completeOAuth(
   env: Env,
@@ -177,42 +133,11 @@ export async function completeOAuth(
   if (!serverId) {
     throw new Error('Invalid state: missing serverId suffix');
   }
-
   const agent = getUserAgent(env, userId);
-  const provider = await (agent as any).provider({
+  return (await (agent as any).runAuthCallback({
+    state: input.state,
+    code: input.code,
     serverId,
     baseRedirectUrl: input.redirectUrl,
-  });
-
-  // Validate state nonce explicitly before handing to auth(). auth()
-  // will use the stored code_verifier regardless; this gives us a
-  // clearer error path when the state is expired or forged.
-  const stateCheck = await provider.checkState(input.state);
-  if (!stateCheck.valid) {
-    throw new Error(`OAuth state rejected: ${stateCheck.error ?? 'unknown'}`);
-  }
-
-  const outcome = await auth(provider, {
-    serverUrl: serverId,
-    authorizationCode: input.code,
-  });
-  if (outcome !== 'AUTHORIZED') {
-    throw new Error(`OAuth callback did not authorize; outcome=${String(outcome)}`);
-  }
-
-  // State has been used — burn the nonce. Provider's own codeVerifier
-  // cleanup happens inside auth() on success.
-  await provider.consumeState(input.state);
-
-  // Record the connection for listings + disconnect flows.
-  const clientInfo = await provider.clientInformation();
-  if (clientInfo?.client_id) {
-    await (agent as any).recordConnection({
-      serverId,
-      clientId: clientInfo.client_id,
-      connectedAt: Date.now(),
-    });
-  }
-
-  return { status: 'connected', serverUrl: serverId };
+  })) as CallbackOAuthResult;
 }

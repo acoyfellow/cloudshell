@@ -24,6 +24,7 @@
 
 import { Agent } from 'agents';
 import { DurableObjectOAuthClientProvider } from 'agents/mcp/do-oauth-client-provider';
+import { auth } from '@modelcontextprotocol/sdk/client/auth.js';
 import type { Env } from './types';
 
 export const CLIENT_NAME = 'cloudshell';
@@ -138,5 +139,113 @@ export class CloudshellUserAgent extends Agent<Env> {
           ? record.connectedAt + tokens.expires_in * 1000
           : null,
     };
+  }
+
+  /**
+   * Run the MCP SDK's `auth()` flow inline inside this DO.
+   *
+   * This has to run here (not in Worker code calling `provider()` as
+   * an RPC) because `auth()` calls many methods on the provider
+   * (saveCodeVerifier, saveClientInformation, state, etc.) and each
+   * call needs the real provider instance — not an RPC stub where
+   * methods get stripped in serialization.
+   *
+   * Returns either the authorize URL (the caller should redirect the
+   * user there) or `null` if the user is already authorized (valid
+   * tokens in storage).
+   */
+  async runAuthStart(params: {
+    readonly serverUrl: string;
+    readonly baseRedirectUrl: string;
+  }): Promise<{ status: 'redirect'; authorizeUrl: string } | { status: 'already_connected' }> {
+    const provider = this.provider({
+      serverId: params.serverUrl,
+      baseRedirectUrl: params.baseRedirectUrl,
+    });
+    const outcome = await auth(provider, { serverUrl: params.serverUrl });
+    if (outcome === 'AUTHORIZED') {
+      return { status: 'already_connected' };
+    }
+    if (outcome === 'REDIRECT') {
+      const authorizeUrl = provider.authUrl;
+      if (!authorizeUrl) {
+        throw new Error('OAuth provider did not produce an authorize URL');
+      }
+      return { status: 'redirect', authorizeUrl };
+    }
+    throw new Error(`Unexpected auth() outcome: ${String(outcome)}`);
+  }
+
+  /**
+   * Complete an OAuth flow with `state` + `code` from the upstream
+   * callback. Runs inline in the DO for the same reason as
+   * runAuthStart. Persists tokens + records the connection on success.
+   */
+  async runAuthCallback(params: {
+    readonly state: string;
+    readonly code: string;
+    readonly serverId: string;
+    readonly baseRedirectUrl: string;
+  }): Promise<{ status: 'connected'; serverUrl: string }> {
+    const provider = this.provider({
+      serverId: params.serverId,
+      baseRedirectUrl: params.baseRedirectUrl,
+    });
+    const stateCheck = await provider.checkState(params.state);
+    if (!stateCheck.valid) {
+      throw new Error(`OAuth state rejected: ${stateCheck.error ?? 'unknown'}`);
+    }
+    const outcome = await auth(provider, {
+      serverUrl: params.serverId,
+      authorizationCode: params.code,
+    });
+    if (outcome !== 'AUTHORIZED') {
+      throw new Error(
+        `OAuth callback did not authorize; outcome=${String(outcome)}`
+      );
+    }
+    await provider.consumeState(params.state);
+    const clientInfo = await provider.clientInformation();
+    if (clientInfo?.client_id) {
+      await this.recordConnection({
+        serverId: params.serverId,
+        clientId: clientInfo.client_id,
+        connectedAt: Date.now(),
+      });
+    }
+    return { status: 'connected', serverUrl: params.serverId };
+  }
+
+  /**
+   * Return the current access token for `serverId` for outbound bridge
+   * proxying. Never exposed over HTTP; only called via RPC from the
+   * Worker's mcp-bridge module. Drives auth() so expired tokens
+   * auto-refresh via the stored refresh_token.
+   *
+   * Returns null on any failure (no connection, refresh failed,
+   * re-auth required). Caller should surface a 401 so the CLI can
+   * prompt `mcp login`.
+   */
+  async getAccessTokenFor(params: {
+    readonly serverId: string;
+    readonly baseRedirectUrl: string;
+  }): Promise<string | null> {
+    const record = (await this.listConnections()).find(
+      (c) => c.serverId === params.serverId
+    );
+    if (!record) return null;
+    const provider = this.provider({
+      serverId: params.serverId,
+      baseRedirectUrl: params.baseRedirectUrl,
+    });
+    provider.clientId = record.clientId;
+    try {
+      const outcome = await auth(provider, { serverUrl: params.serverId });
+      if (outcome !== 'AUTHORIZED') return null;
+    } catch {
+      return null;
+    }
+    const tokens = await provider.tokens();
+    return tokens?.access_token ?? null;
   }
 }
