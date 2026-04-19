@@ -98,9 +98,14 @@ function relayWebSocket(source: WebSocket, target: WebSocket) {
     }
 
     if (ArrayBuffer.isView(event.data)) {
-      target.send(
-        event.data.buffer.slice(event.data.byteOffset, event.data.byteOffset + event.data.byteLength)
-      );
+      // TS 6 widens TypedArray.buffer to ArrayBuffer | SharedArrayBuffer even in
+      // a Workers runtime where SharedArrayBuffer isn't available. The copy-slice
+      // below always produces an ArrayBuffer; narrow explicitly for ws.send().
+      const slice = event.data.buffer.slice(
+        event.data.byteOffset,
+        event.data.byteOffset + event.data.byteLength
+      ) as ArrayBuffer;
+      target.send(slice);
       return;
     }
 
