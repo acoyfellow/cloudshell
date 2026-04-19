@@ -254,6 +254,11 @@ export class CloudshellUserAgent extends Agent<Env> {
    * Complete an OAuth flow with `state` + `code` from the upstream
    * callback. Runs inline in the DO for the same reason as
    * runAuthStart. Persists tokens + records the connection on success.
+   *
+   * Logs the actual upstream failure reason to the Worker tail when
+   * anything goes wrong — `toRouteErrorResponse` swallows the error
+   * message at the HTTP boundary, so without these console.error
+   * calls the Worker tail just shows a bare 500 with no diagnostics.
    */
   async runAuthCallback(params: {
     readonly state: string;
@@ -267,13 +272,37 @@ export class CloudshellUserAgent extends Agent<Env> {
     });
     const stateCheck = await provider.checkState(params.state);
     if (!stateCheck.valid) {
+      console.error('[mcp] state check failed', {
+        serverId: params.serverId,
+        error: stateCheck.error,
+      });
       throw new Error(`OAuth state rejected: ${stateCheck.error ?? 'unknown'}`);
     }
-    const outcome = await auth(provider, {
-      serverUrl: params.serverId,
-      authorizationCode: params.code,
-    });
+    let outcome: string;
+    try {
+      outcome = await auth(provider, {
+        serverUrl: params.serverId,
+        authorizationCode: params.code,
+      });
+    } catch (err) {
+      // MCP SDK's auth() throws on token exchange failures. Capture
+      // the real error shape (class + message + optional body) and
+      // log before re-throwing so we can see it in the tail.
+      const e = err as Error & { message?: string; statusCode?: number; body?: unknown };
+      console.error('[mcp] auth() threw during token exchange', {
+        serverId: params.serverId,
+        errorName: e?.name,
+        errorMessage: e?.message,
+        statusCode: e?.statusCode,
+        body: e?.body,
+      });
+      throw err;
+    }
     if (outcome !== 'AUTHORIZED') {
+      console.error('[mcp] auth() returned non-AUTHORIZED', {
+        serverId: params.serverId,
+        outcome,
+      });
       throw new Error(
         `OAuth callback did not authorize; outcome=${String(outcome)}`
       );
