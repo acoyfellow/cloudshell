@@ -63,8 +63,15 @@ RUN chown user:user /opt/cloudshell/.tmux.conf /home/user
 # ticket from $CLOUDSHELL_BRIDGE_TICKET or ~/.cloudshell/bridge-ticket
 # and proxies all MCP tool calls through cloudshell.coey.dev so the
 # container never holds upstream OAuth tokens.
-COPY worker/container/mcp-cli.mjs /usr/local/bin/mcp
-RUN chmod +x /usr/local/bin/mcp
+#
+# Note on the two-file shape: Node.js infers CJS vs ESM from the file
+# extension. A file at /usr/local/bin/mcp (no extension) runs as CJS,
+# which rejects the `import` syntax our script uses. Keeping the
+# source file as .mjs preserves ESM; a tiny shell wrapper named `mcp`
+# is what the user actually invokes.
+COPY worker/container/mcp-cli.mjs /usr/local/lib/cloudshell-mcp-cli.mjs
+RUN printf '#!/bin/sh\nexec /usr/bin/node /usr/local/lib/cloudshell-mcp-cli.mjs "$@"\n' > /usr/local/bin/mcp && \
+    chmod +x /usr/local/bin/mcp /usr/local/lib/cloudshell-mcp-cli.mjs
 
 COPY worker/startup.sh /startup.sh
 RUN chmod +x /startup.sh
