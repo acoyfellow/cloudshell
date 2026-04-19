@@ -7,6 +7,14 @@ export interface TerminalTicketPayload {
   readonly sessionId: string;
   readonly tabId: string;
   readonly exp: number;
+  /**
+   * Optional capability scopes this ticket is authorized for.
+   * Existing terminal-WS tickets omit this field (plain identity ticket).
+   * Bridge-call tickets carry e.g. `["cf-portal"]` — the bridge endpoint
+   * verifies the required scope is present before attaching any upstream
+   * credential. See `verifyCapabilityTicket`.
+   */
+  readonly scope?: readonly string[];
 }
 
 function toBase64Url(bytes: Uint8Array): string {
@@ -97,5 +105,53 @@ export async function verifyTerminalTicket(
     sessionId: payload.sessionId,
     tabId: payload.tabId,
     exp: payload.exp,
+    scope: Array.isArray(payload.scope)
+      ? payload.scope.filter((s): s is string => typeof s === 'string')
+      : undefined,
   };
+}
+
+/**
+ * Mint a capability-bearing ticket. Identical to `createTerminalTicket` but
+ * forces `scope` to be present, so a caller cannot accidentally mint an
+ * unbounded capability.
+ *
+ * The container reads the resulting string from an env var and presents it on
+ * every bridge call. Short `exp` (minutes) + short scope list = the entire
+ * authority footprint this credential can ever exercise.
+ */
+export async function createCapabilityTicket(
+  payload: TerminalTicketPayload & { readonly scope: readonly string[] },
+  secret: string
+): Promise<string> {
+  if (payload.scope.length === 0) {
+    throw new Error('createCapabilityTicket requires a non-empty scope');
+  }
+  return createTerminalTicket(payload, secret);
+}
+
+/**
+ * Verify a capability ticket AND that the required scope is granted.
+ *
+ * Returns the payload on success, `null` on any of:
+ *   - signature mismatch
+ *   - expired
+ *   - scope missing or does not include `requiredScope`
+ *
+ * A null return is the only failure signal by design: the caller (the bridge
+ * endpoint) should not branch on reason. Every rejection is a 401.
+ */
+export async function verifyCapabilityTicket(
+  ticket: string,
+  secret: string,
+  requiredScope: string
+): Promise<TerminalTicketPayload | null> {
+  const payload = await verifyTerminalTicket(ticket, secret);
+  if (!payload) {
+    return null;
+  }
+  if (!payload.scope || !payload.scope.includes(requiredScope)) {
+    return null;
+  }
+  return payload;
 }
