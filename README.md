@@ -121,6 +121,110 @@ The browser does not connect to the container directly.
 
 If any hop drops that identity, the browser typically sees a websocket close like `1006` instead of a usable terminal.
 
+### MCP auth broker (agent capability proxy)
+
+Cloudshell is agnostic to what MCP server you wire up — it is the broker,
+not the authority. The CLI inside the container never holds an upstream
+OAuth token; the cloudshell app holds them server-side in a per-user
+Durable Object and attaches them to outbound calls.
+
+```
+browser (your device)          cloudshell.coey.dev              upstream MCP server
+ │                              │                                │
+ │  Better Auth session         │                                │
+ │─── POST /oauth/mcp/start ──▶│                                │
+ │     (click Connect in UI     │  runAuthStart in UserAgent DO: │
+ │      or mcp login in shell)  │  PKCE, Dynamic Client          │
+ │                              │  Registration, state nonce     │
+ │                              │─── authorize URL ─────────────▶│
+ │◀── popup window ─────────────│                                │
+ │                                                                │
+ │  ─── user approves in popup, upstream redirects ──────────────▶│
+ │                                                                │
+ │◀── GET /api/mcp/oauth/callback?state=&code= ──────────────────│
+ │                              │  runAuthCallback in DO:        │
+ │                              │  exchange code, save tokens    │
+ │◀── popup posts result ───────│                                │
+ │                                                                │
+ │  container shell                                               │
+ │  $ mcp call <server> tools/list                               │
+ │   │                          │                                │
+ │   │── POST /api/mcp/bridge ─▶│                                │
+ │   │    X-Cloudshell-Ticket   │  verifyBridgeTicket            │
+ │   │                          │  DO.getAccessTokenFor()        │
+ │   │                          │─── Authorization: Bearer ─────▶│
+ │   │                          │◀── tool result (JSON / SSE) ───│
+ │   │◀───────── result ────────│                                │
+```
+
+Key properties, each tied to source:
+
+- **Token never enters the container.** `worker/mcp-bridge.ts`
+  `bridgeMcpRequest()` reads the bearer from the DO by RPC, attaches it
+  to the outbound fetch, streams the response back. The container only
+  sees the MCP JSON-RPC response body.
+- **Auth separation.** Browser path uses Better Auth session cookies
+  (`src/routes/api/mcp/oauth/*`). Container path uses a short-lived
+  capability ticket scoped `['mcp-bridge']`
+  (`shared/terminal-ticket.ts`, `verifyCapabilityTicket`). Terminal
+  identity tickets (no scope) can't be substituted — every path has
+  an exact-scope check.
+- **Bridge tickets auto-delivered.** When the browser opens a terminal
+  tab, `src/lib/components/cloudshell/terminal-pane.svelte`
+  `deliverBridgeTicket()` mints a ticket against `/api/cloudshell/
+  ticket/mint-bridge` and sends it down the terminal WebSocket as a
+  `{type: "bridge_ticket"}` control frame.
+  `worker/container/main.go` writes it to `~/.cloudshell/bridge-ticket`
+  on receive; `worker/container/mcp-cli.mjs` reads it on invocation.
+- **Per-user isolation.** Each user has one `CloudshellUserAgent`
+  Durable Object (`worker/user-agent.ts`) addressed by Better Auth
+  user ID. All OAuth state (client info, code verifiers, state nonces,
+  tokens) lives in that DO's SQLite. Deleting the user wipes everything;
+  two users cannot see each other's connections.
+- **Based on `cloudflare/agents`.** The token store is
+  `DurableObjectOAuthClientProvider` from the agents SDK, driven by
+  `@modelcontextprotocol/sdk/client/auth.js`. Cloudshell writes a
+  thin per-user DO around it, plus the HTTP + UI plumbing above.
+
+Usage from the shell:
+
+```sh
+# one-time: open a terminal in the browser. Bridge ticket lands
+# at ~/.cloudshell/bridge-ticket automatically.
+
+$ mcp login https://mcp.apify.com
+Open this URL in your browser to authorize https://mcp.apify.com:
+  https://console.apify.com/authorize/oauth?...
+Waiting for authorization... (Ctrl-C to cancel)
+✓ Connected to https://mcp.apify.com.
+
+$ mcp list
+https://mcp.apify.com    2026-04-19T...
+
+$ mcp call https://mcp.apify.com tools/list
+{ "jsonrpc": "2.0", ..., "result": { "tools": [...] } }
+```
+
+Usage from the UI: visit the Tools panel, enter an MCP server URL in
+"Connect MCP server", approve in the popup. Connection appears in the
+list and is immediately usable from any terminal.
+
+Design notes and honest trade-offs (see also
+`~/cloudflare/auth-research/experiments/28-cloudshell-mcp-broker/`):
+
+- Tokens in DO SQLite are plaintext today, not end-to-end encrypted.
+  `cloudflare/workers-oauth-provider` (the OAuth **server** library)
+  encrypts `props` at rest; we could port that pattern to the client
+  side if a threat model requires it.
+- `parseServerIdFromState` in `worker/mcp-oauth.ts` parses the state
+  nonce format `nonce.serverId`. This matches agents SDK 0.11's
+  `DurableObjectOAuthClientProvider.state()` output; if that format
+  changes we break silently. A more robust fix would ask the
+  provider for the serverId directly.
+- Container `sleepAfter` is currently 5 min. Bridge tickets are
+  1 hour. Bridge ticket lifetime dominates; loss of a container
+  doesn't invalidate the ticket. Tighten if the threat model needs it.
+
 ### Post-Containers-GA deploy footgun (2026-04-18) — FIXED in 0.91.2
 
 > **Short version:** this was an alchemy bug, fixed upstream on 2026-01-09 in
