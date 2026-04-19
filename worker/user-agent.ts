@@ -118,6 +118,42 @@ function encodeServerId(serverId: string): string {
   return btoa(serverId).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+/**
+ * Error thrown for bad MCP server URLs. Caught by the HTTP layer
+ * (`toRouteErrorResponse` in worker/index.ts) and returned as a 400
+ * with the message intact, instead of a bare 500.
+ */
+export class InvalidMcpServerUrl extends Error {
+  readonly status = 400;
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidMcpServerUrl';
+  }
+}
+
+/**
+ * Validate that the user-supplied serverUrl is a proper https:// URL.
+ * We accept http:// only on localhost for dev convenience; everything
+ * else must be https.
+ */
+function assertValidServerUrl(serverUrl: string): void {
+  let url: URL;
+  try {
+    url = new URL(serverUrl);
+  } catch {
+    throw new InvalidMcpServerUrl(
+      `Not a URL: ${serverUrl}. Expected e.g. https://mcp.example.com/mcp`
+    );
+  }
+  if (url.protocol === 'https:') return;
+  if (url.protocol === 'http:' && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(url.hostname)) {
+    return;
+  }
+  throw new InvalidMcpServerUrl(
+    `MCP server URL must use https:// (got ${url.protocol}//). Try https://${url.host}${url.pathname || ''}`
+  );
+}
+
 function decodeServerId(encoded: string): string | null {
   try {
     const padded = encoded.replace(/-/g, '+').replace(/_/g, '/');
@@ -297,6 +333,11 @@ export class CloudshellUserAgent extends Agent<Env> {
     readonly serverUrl: string;
     readonly baseRedirectUrl: string;
   }): Promise<{ status: 'redirect'; authorizeUrl: string } | { status: 'already_connected' }> {
+    // Validate the serverUrl shape before doing any OAuth work. Without
+    // this, a bad input like `mcp login cf-portal` (no scheme, no host)
+    // would crash deep in the MCP SDK's discovery fetch and surface as
+    // a bare HTTP 500 with no useful diagnostic.
+    assertValidServerUrl(params.serverUrl);
     const provider = this.provider({
       serverId: params.serverUrl,
       baseRedirectUrl: params.baseRedirectUrl,

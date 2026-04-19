@@ -127,6 +127,21 @@ async function jsonOrThrow(response, context) {
 async function cmdLogin(serverUrl) {
   if (!serverUrl) {
     console.error('Usage: mcp login <server-url>');
+    console.error('Example: mcp login https://portal.mcp.cfdata.org/mcp');
+    process.exit(1);
+  }
+  // Validate shape client-side so a bad input (e.g. `mcp login cf-portal`)
+  // fails with a helpful message before we hit the server.
+  try {
+    const u = new URL(serverUrl);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') {
+      throw new Error(`unsupported protocol ${u.protocol}`);
+    }
+  } catch {
+    console.error(
+      `'${serverUrl}' is not a valid URL.\n` +
+        `Example: mcp login https://portal.mcp.cfdata.org/mcp`
+    );
     process.exit(1);
   }
   // Pre-auth check — make sure we have a ticket before trying to
