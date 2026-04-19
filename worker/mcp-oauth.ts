@@ -65,6 +65,34 @@ function parseServerIdFromState(state: string): string | null {
 }
 
 /**
+ * Public connection metadata — what the CLI sees. Token values and
+ * OAuth client secrets are NEVER included; those stay in the DO's
+ * storage and only surface inside bridge proxy logic that forwards
+ * calls to upstream MCP servers.
+ */
+export interface McpConnectionPublic {
+  readonly serverId: string;
+  readonly connectedAt: number;
+}
+
+/**
+ * List MCP servers the user has authorized. Cheap — reads the DO's
+ * connection index, which is a single KV lookup. Does not call the
+ * upstream provider.
+ */
+export async function listConnections(
+  env: Env,
+  userId: string
+): Promise<McpConnectionPublic[]> {
+  const agent = getUserAgent(env, userId);
+  const records = await (agent as any).listConnections();
+  return records.map((r: { serverId: string; connectedAt: number }) => ({
+    serverId: r.serverId,
+    connectedAt: r.connectedAt,
+  }));
+}
+
+/**
  * Look up (or create) the CloudshellUserAgent DO for `userId` and
  * return its RPC stub. Durable Objects are addressed by name; one DO
  * per user id, forever stable.
