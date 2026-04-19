@@ -3,6 +3,7 @@ import {
   Container,
   CustomDomain,
   D1Database,
+  DurableObjectNamespace,
   KVNamespace,
   R2Bucket,
   SvelteKit,
@@ -51,6 +52,21 @@ const Sandbox = await Container('sandbox', {
   },
 });
 
+/**
+ * Per-user Agent DO holding MCP OAuth connections + tokens.
+ * See worker/user-agent.ts for the CloudshellUserAgent class and the A.1
+ * step of the MCP auth broker plan.
+ *
+ * `sqlite: true` gives the Agent SDK the SQLite-backed storage it needs
+ * (agents@0.11.x uses DurableObjectOAuthClientProvider which writes to
+ * ctx.storage; SQLite is the current-generation backend).
+ */
+const UserAgent = await DurableObjectNamespace(`${projectName}-user-agent`, {
+  className: 'CloudshellUserAgent',
+  scriptName: workerName,
+  sqlite: true,
+});
+
 /** Optional: cloudflare/containers-demos `terminal/` shaped Node `ws` host for `/terminal` smoke on the API worker. */
 const TerminalParity =
   deployEnv.terminalParitySecret != null && deployEnv.terminalParitySecret.length > 0
@@ -75,6 +91,7 @@ export const WORKER = await Worker(workerName, {
   observability: { enabled: true },
   bindings: {
     Sandbox,
+    UserAgent,
     USERS_KV,
     USER_DATA,
     TERMINAL_TICKET_SECRET: deployEnv.terminalSecret,

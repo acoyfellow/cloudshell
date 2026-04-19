@@ -35,6 +35,12 @@ import { getUserSessionContainerId, readWorkerIdentity } from './auth';
 import { isContainerActiveStatus } from './tabs';
 import type { Env } from './types';
 
+// Re-export the user-agent DO so alchemy can bind it as a Durable Object
+// class. See worker/user-agent.ts for the shape + rationale. This export
+// is a no-op for the terminal path; binding the namespace on the Worker
+// is what makes user-scoped MCP OAuth storage possible in later steps.
+export { CloudshellUserAgent } from './user-agent';
+
 // Export the Container class for Durable Object binding
 export {
   CloudShellTerminal,
