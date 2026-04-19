@@ -319,6 +319,14 @@
     --term-fg: #f2efe8;
     --term-cursor: #f7f4ed;
 
+    /*
+     * wterm.css sets position:relative on .wterm, which defeats inset-0.
+     * Force full dimensions of the containing pane so the measured char
+     * width isn't based on a collapsed-to-content host.
+     */
+    width: 100%;
+    height: 100%;
+
     padding: 8px;
     border-radius: 0;
     box-shadow: none;
@@ -331,19 +339,14 @@
     style:background={TERMINAL_BACKGROUND}
   >
     <!--
-      wterm's .wterm class sets `position: relative` on the host element,
-      which defeats `absolute inset-0`. The element collapses to its content
-      width (~62px, ~4 cols), which becomes the measured size, which the
-      Go PTY sees as cols=4, which wraps every few chars.
-      Fix: give the host a DEDICATED sizing parent, and let the host itself
-      use w-full/h-full inside it.
+      wterm's .wterm sets position:relative, so the host needs explicit
+      100% width + height to fill this pane. Without them it collapses
+      to content width (~62px / ~4 cols) and the Go PTY gets cols=4.
     -->
-    <div class="absolute inset-0 min-h-0 min-w-0">
-      <div
-        bind:this={terminalElement}
-        class="wterm-host h-full w-full"
-      ></div>
-    </div>
+    <div
+      bind:this={terminalElement}
+      class="wterm-host absolute inset-0 h-full w-full"
+    ></div>
 
     {#if controller.terminalStatus !== 'connected'}
       {#if controller.terminalStatus === 'connecting'}
