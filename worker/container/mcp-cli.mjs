@@ -210,6 +210,110 @@ async function cmdList() {
   }
 }
 
+/**
+ * MCP Streamable HTTP session handshake.
+ *
+ * Per MCP spec, stateful servers (like cf-portal) reject arbitrary
+ * method calls without a prior `initialize`. The flow:
+ *   1. POST `initialize` → server returns `Mcp-Session-Id: <sid>` header
+ *   2. (optional but polite) POST `notifications/initialized` with the sid
+ *   3. POST further methods, each with `Mcp-Session-Id` header
+ *
+ * Without this, cf-portal returns a JSON-RPC error like:
+ *   {code:-32000, message:"Bad Request: Session expired or does not exist"}
+ *
+ * Sessions expire server-side. For a CLI one-shot call we don't cache
+ * the sid; every invocation does its own handshake. Cheap (a few
+ * hundred ms) and correct.
+ */
+async function mcpHandshake(serverUrl) {
+  const bridgePath = `/api/mcp/bridge/mcp?server=${encodeURIComponent(
+    serverUrl
+  )}`;
+  const initRpc = {
+    jsonrpc: '2.0',
+    id: `cli-init-${Date.now()}`,
+    method: 'initialize',
+    params: {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'cloudshell-mcp-cli', version: '0.1' },
+    },
+  };
+  const response = await bridgeFetch(bridgePath, {
+    method: 'POST',
+    headers: { accept: 'application/json, text/event-stream' },
+    body: JSON.stringify(initRpc),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(
+      `initialize failed: HTTP ${response.status}${
+        text ? ` — ${text.slice(0, 400)}` : ''
+      }`
+    );
+  }
+  const sessionId = response.headers.get('mcp-session-id');
+  if (!sessionId) {
+    // Stateless transport — no handshake needed, caller can just POST
+    // normally. Return null so cmdCall falls back to one-shot mode.
+    // Drain the body so the connection is clean.
+    try {
+      await response.arrayBuffer();
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+  // Drain the initialize response (we don't inspect capabilities here —
+  // cf-portal's tools/list is what the user asked for).
+  await consumeResponse(response);
+
+  // Polite `notifications/initialized` (no id, no response expected).
+  try {
+    await bridgeFetch(bridgePath, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json, text/event-stream',
+        'mcp-session-id': sessionId,
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'notifications/initialized',
+      }),
+    });
+  } catch {
+    // Best-effort — server might respond 202 or nothing; fine either way.
+  }
+  return sessionId;
+}
+
+/**
+ * Drain a response body without caring about the content — used after
+ * initialize so we don't leak the connection but don't need to parse
+ * the body (we only needed the session id header).
+ */
+async function consumeResponse(response) {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('text/event-stream')) {
+    const reader = response.body.getReader();
+    try {
+      for (;;) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+    } catch {
+      // ignore
+    }
+  } else {
+    try {
+      await response.arrayBuffer();
+    } catch {
+      // ignore
+    }
+  }
+}
+
 async function cmdCall(serverUrl, method, ...paramArgs) {
   if (!serverUrl || !method) {
     console.error('Usage: mcp call <server-url> <method> [<json-params>]');
@@ -218,6 +322,10 @@ async function cmdCall(serverUrl, method, ...paramArgs) {
   const params =
     paramArgs.length === 0 ? undefined : JSON.parse(paramArgs.join(' '));
 
+  // Establish a session first (stateful MCP transport). If the server
+  // is stateless, sessionId is null and we call directly.
+  const sessionId = await mcpHandshake(serverUrl);
+
   const rpc = {
     jsonrpc: '2.0',
     id: `cli-${Date.now()}`,
@@ -225,13 +333,16 @@ async function cmdCall(serverUrl, method, ...paramArgs) {
     ...(params !== undefined ? { params } : {}),
   };
 
-  // Bridge routes MCP JSON-RPC at /api/mcp/bridge/mcp?server=<url>.
   const bridgePath = `/api/mcp/bridge/mcp?server=${encodeURIComponent(
     serverUrl
   )}`;
 
+  const headers = { accept: 'application/json, text/event-stream' };
+  if (sessionId) headers['mcp-session-id'] = sessionId;
+
   const response = await bridgeFetch(bridgePath, {
     method: 'POST',
+    headers,
     body: JSON.stringify(rpc),
   });
 
