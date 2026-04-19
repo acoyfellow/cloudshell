@@ -480,46 +480,72 @@ export class CloudshellUserAgent extends Agent<Env> {
     });
     provider.clientId = record.clientId;
 
-    // Diagnostic: check what's actually in storage BEFORE calling auth()
-    // so a null return tells us WHY — missing tokens, expired, missing
-    // client_info, mismatched clientId, etc.
-    const preClientInfo = await provider.clientInformation();
-    const preTokens = await provider.tokens();
-    console.log('[mcp] getAccessTokenFor pre-auth state', {
-      serverId: params.serverId,
-      storedClientId: record.clientId,
-      providerClientId: provider.clientId,
-      hasClientInfo: preClientInfo != null,
-      hasAccessToken: preTokens?.access_token != null,
-      hasRefreshToken: preTokens?.refresh_token != null,
-      expiresIn: preTokens?.expires_in,
-    });
-
-    try {
-      const outcome = await auth(provider, { serverUrl: params.serverId });
-      if (outcome !== 'AUTHORIZED') {
-        console.error('[mcp] auth() did not authorize', {
-          serverId: params.serverId,
-          outcome,
-        });
-        return null;
-      }
-    } catch (err) {
-      const e = err as Error & {
-        message?: string;
-        statusCode?: number;
-        body?: unknown;
-      };
-      console.error('[mcp] auth() threw during token refresh', {
+    // Resolve tokens WITHOUT calling MCP SDK's auth() helper.
+    //
+    // auth(provider, {serverUrl}) is NOT "give me the current valid access
+    // token" — it's "refresh or start a new flow". If the stored tokens
+    // have no refresh_token (cf-portal doesn't issue one), auth() falls
+    // through to `redirectToAuthorization` and returns 'REDIRECT' even
+    // when a perfectly usable access_token is in storage. Found in prod
+    // 2026-04-19 against cf-portal.
+    //
+    // We read tokens directly, honor the expiry, and try a refresh ONLY
+    // if a refresh_token exists. If the access token is expired and no
+    // refresh_token is available, we return null (CLI prompts re-login).
+    const tokens = await provider.tokens();
+    if (!tokens?.access_token) {
+      console.error('[mcp] getAccessTokenFor: no access_token stored', {
         serverId: params.serverId,
-        errorName: e?.name,
-        errorMessage: e?.message,
-        statusCode: e?.statusCode,
-        body: e?.body,
       });
       return null;
     }
-    const tokens = await provider.tokens();
-    return tokens?.access_token ?? null;
+
+    // Check expiry. `expires_in` is seconds from issue; record.connectedAt
+    // is our best proxy for issue time (we recorded the connection right
+    // after the token was saved on successful callback).
+    if (typeof tokens.expires_in === 'number') {
+      const expiresAtMs = record.connectedAt + tokens.expires_in * 1000;
+      // 60s skew buffer so we don't hand out a token about to expire
+      // mid-request.
+      if (Date.now() > expiresAtMs - 60_000) {
+        if (!tokens.refresh_token) {
+          console.error('[mcp] access token expired, no refresh_token', {
+            serverId: params.serverId,
+            expiresAtMs,
+          });
+          return null;
+        }
+        // Refresh path: ask auth() to refresh. If it throws, null.
+        try {
+          const outcome = await auth(provider, { serverUrl: params.serverId });
+          if (outcome !== 'AUTHORIZED') {
+            console.error('[mcp] refresh flow did not authorize', {
+              serverId: params.serverId,
+              outcome,
+            });
+            return null;
+          }
+          const refreshed = await provider.tokens();
+          return refreshed?.access_token ?? null;
+        } catch (err) {
+          const e = err as Error & {
+            message?: string;
+            statusCode?: number;
+            body?: unknown;
+          };
+          console.error('[mcp] auth() threw during refresh', {
+            serverId: params.serverId,
+            errorName: e?.name,
+            errorMessage: e?.message,
+            statusCode: e?.statusCode,
+            body: e?.body,
+          });
+          return null;
+        }
+      }
+    }
+
+    // Token is present and not expired — hand it back.
+    return tokens.access_token;
   }
 }
