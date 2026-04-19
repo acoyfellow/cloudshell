@@ -153,6 +153,45 @@ const CONNECTION_INDEX_KEY = '/cloudshell/mcp/connections';
 
 export class CloudshellUserAgent extends Agent<Env> {
   /**
+   * Scan this DO's storage for an existing DCR'd client for
+   * `serverId` and return its client_id, preferring the most-recently-
+   * registered one when multiple exist.
+   *
+   * Keys are laid out by upstream as
+   *   /${clientName}/${serverId}/${clientId}/client_info/
+   * The stored value has an optional `client_id_issued_at` timestamp
+   * we can use to order. If timestamps are missing or equal, we fall
+   * back to the last-listed key (alphabetical order; still
+   * deterministic).
+   */
+  async findLatestStoredClientId(serverId: string): Promise<string | null> {
+    const prefix = `/${CLIENT_NAME}/${serverId}/`;
+    const suffix = '/client_info/';
+    const results = (await this.ctx.storage.list({ prefix })) as Map<
+      string,
+      { client_id_issued_at?: number }
+    >;
+    let bestId: string | null = null;
+    let bestIssuedAt = -Infinity;
+    for (const [key, value] of results) {
+      if (!key.endsWith(suffix)) continue;
+      const head = key.slice(0, -suffix.length);
+      const lastSlash = head.lastIndexOf('/');
+      if (lastSlash < 0) continue;
+      const clientId = head.slice(lastSlash + 1);
+      const issuedAt =
+        typeof value?.client_id_issued_at === 'number'
+          ? value.client_id_issued_at
+          : 0;
+      if (issuedAt > bestIssuedAt || bestId == null) {
+        bestIssuedAt = issuedAt;
+        bestId = clientId;
+      }
+    }
+    return bestId;
+  }
+
+  /**
    * Return a `DurableObjectOAuthClientProvider` scoped to `serverId`.
    * The provider shares this DO's storage so tokens persist with the
    * agent.
@@ -262,6 +301,25 @@ export class CloudshellUserAgent extends Agent<Env> {
       serverId: params.serverUrl,
       baseRedirectUrl: params.baseRedirectUrl,
     });
+    // A fresh provider instance has no in-memory clientId, so
+    // `clientInformation()` returns undefined, so MCP SDK's auth()
+    // runs Dynamic Client Registration AGAIN on every login attempt
+    // \u2014 including repeated 'mcp login' retries for the same user.
+    // Each new DCR registers a brand-new client_id with the upstream
+    // OAuth server, so when the user finally approves, the auth
+    // code is tied to the LATEST registered client. If our callback
+    // picks the wrong client_id (e.g. earliest stored), upstream
+    // rejects the token exchange with InvalidGrantError 'Client ID
+    // mismatch' \u2014 exactly what we saw in prod.
+    //
+    // Fix: rehydrate the most-recently-saved clientId BEFORE calling
+    // auth(), so if a DCR is already stored for this (user, server)
+    // we reuse it instead of registering again. See
+    // findLatestStoredClientId below.
+    const existing = await this.findLatestStoredClientId(params.serverUrl);
+    if (existing) {
+      provider.clientId = existing;
+    }
     const outcome = await auth(provider, { serverUrl: params.serverUrl });
     if (outcome === 'AUTHORIZED') {
       return { status: 'already_connected' };
@@ -307,33 +365,20 @@ export class CloudshellUserAgent extends Agent<Env> {
     // `auth()` with an `authorizationCode` demands that
     // provider.clientInformation() return something (i.e. the
     // client_id from the earlier DCR register). Our Provider instance
-    // here is fresh — it has no in-memory clientId. We have to look
-    // it up from storage first.
+    // here is fresh — it has no in-memory clientId.
     //
-    // The client_info was saved by runAuthStart under the key
-    //   /${clientName}/${serverId}/${clientId}/client_info/
-    // Scan that prefix and pick the most-recently-registered client
-    // for this server. There SHOULD be exactly one (DCR is idempotent
-    // per (user, server) in our usage); if there are more, the latest
-    // wins.
-    const clientInfoPrefix = `/${CLIENT_NAME}/${params.serverId}/`;
-    const keys = await this.ctx.storage.list({ prefix: clientInfoPrefix });
-    let clientIdFromStorage: string | null = null;
-    for (const key of keys.keys()) {
-      // key format: /${clientName}/${serverId}/${clientId}/client_info/
-      const suffix = '/client_info/';
-      if (!key.endsWith(suffix)) continue;
-      const head = key.slice(0, -suffix.length);
-      const lastSlash = head.lastIndexOf('/');
-      if (lastSlash < 0) continue;
-      clientIdFromStorage = head.slice(lastSlash + 1);
-      // Keep scanning — the Map preserves insertion order, and the
-      // latest DCR register is what we want.
-    }
+    // After the runAuthStart fix (rehydrating clientId before
+    // auth()), each user+server pair should have exactly one stored
+    // client_info. Still, pick the most-recently-registered one just
+    // in case: if a prior partial flow left a stale entry, the
+    // latest is what corresponds to the authorize URL the user just
+    // completed.
+    const clientIdFromStorage = await this.findLatestStoredClientId(
+      params.serverId
+    );
     if (!clientIdFromStorage) {
       console.error('[mcp] no stored clientId for serverId', {
         serverId: params.serverId,
-        prefix: clientInfoPrefix,
       });
       throw new Error(
         `No OAuth client registration found for ${params.serverId}. Run \`mcp login\` again.`
