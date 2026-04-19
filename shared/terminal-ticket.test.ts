@@ -31,13 +31,15 @@ describe('terminal ticket primitive (identity-only, pre-capability)', () => {
       { userId: 'u1', userEmail: null, sessionId: 'main', tabId: 'main', exp: NEVER_EXPIRES },
       SECRET
     );
+    // Swap the signature for a valid-length but definitely-wrong one.
+    // Earlier attempts flipped a single char of the original sig;
+    // occasionally that produced an invalid base64url length or decoded
+    // padding that WebCrypto handled weirdly, making the test flaky
+    // (~1 in 50 runs failed). Replacing the whole sig with all-zeros
+    // (same length, same alphabet, just not the real signature) is
+    // deterministic — HMAC of the body will never be all zeros.
     const [body, sig] = ticket.split('.');
-    // Flip the last char to a DIFFERENT value in base64url alphabet so the
-    // tampering is guaranteed. The original impl (append 'A') was flaky:
-    // if the sig naturally ended in 'A', the tampered value was identical.
-    const last = sig.slice(-1);
-    const replacement = last === 'A' ? 'B' : 'A';
-    const tampered = `${body}.${sig.slice(0, -1)}${replacement}`;
+    const tampered = `${body}.${'A'.repeat(sig.length)}`;
     expect(await verifyTerminalTicket(tampered, SECRET)).toBeNull();
   });
 
