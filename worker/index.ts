@@ -33,6 +33,7 @@ import {
 import { UnexpectedFailure } from './effect/errors';
 import { getUserSessionContainerId, readWorkerIdentity } from './auth';
 import { isContainerActiveStatus } from './tabs';
+import { startOAuth, completeOAuth } from './mcp-oauth';
 import type { Env } from './types';
 
 // Re-export the user-agent DO so alchemy can bind it as a Durable Object
@@ -199,6 +200,62 @@ function createApp() {
 
   // Health check
   app.get('/health', (c) => c.json({ status: 'ok' }));
+
+  /**
+   * MCP OAuth broker endpoints.
+   *
+   * The APP (SvelteKit) forwards authenticated requests here after
+   * validating the Better Auth session and attaching X-User-Id. This
+   * Worker does NOT validate the session itself; it trusts forwarded
+   * identity the same way every other /api/* route does.
+   *
+   * Browser-facing surface (the popup, the authorize redirect) lives
+   * on the APP origin. These routes are the server-side state machine
+   * behind the APP's /api/mcp/oauth/{start,callback} endpoints.
+   */
+  app.post('/mcp/oauth/start', async (c) => {
+    try {
+      const userId = c.req.header('X-User-Id');
+      if (!userId) return c.json({ error: 'X-User-Id required' }, 401);
+      const body = await c.req.json<{ serverUrl?: string; redirectUrl?: string }>();
+      if (!body.serverUrl || !body.redirectUrl) {
+        return c.json({ error: 'serverUrl and redirectUrl are required' }, 400);
+      }
+      const result = await startOAuth(c.env, userId, {
+        serverUrl: body.serverUrl,
+        redirectUrl: body.redirectUrl,
+      });
+      return c.json(result);
+    } catch (error) {
+      return toRouteErrorResponse(c, error);
+    }
+  });
+
+  app.post('/mcp/oauth/callback', async (c) => {
+    try {
+      const userId = c.req.header('X-User-Id');
+      if (!userId) return c.json({ error: 'X-User-Id required' }, 401);
+      const body = await c.req.json<{
+        state?: string;
+        code?: string;
+        redirectUrl?: string;
+      }>();
+      if (!body.state || !body.code || !body.redirectUrl) {
+        return c.json(
+          { error: 'state, code, and redirectUrl are required' },
+          400
+        );
+      }
+      const result = await completeOAuth(c.env, userId, {
+        state: body.state,
+        code: body.code,
+        redirectUrl: body.redirectUrl,
+      });
+      return c.json(result);
+    } catch (error) {
+      return toRouteErrorResponse(c, error);
+    }
+  });
 
   // Session APIs
   app.get('/api/sessions', (c) => runJsonRoute(c, listSessions(c.req.header('X-User-Id'))));
