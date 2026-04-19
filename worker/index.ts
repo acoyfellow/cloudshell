@@ -35,6 +35,7 @@ import { getUserSessionContainerId, readWorkerIdentity } from './auth';
 import { isContainerActiveStatus } from './tabs';
 import { startOAuth, completeOAuth, listConnections } from './mcp-oauth';
 import { bridgeMcpRequest } from './mcp-bridge';
+import { InvalidMcpServerUrl } from './user-agent';
 import type { Env } from './types';
 
 // Re-export the user-agent DO so alchemy can bind it as a Durable Object
@@ -228,6 +229,13 @@ function createApp() {
       });
       return c.json(result);
     } catch (error) {
+      // Bad user input (e.g. `mcp login cf-portal` \u2014 not a URL) surfaces as
+      // InvalidMcpServerUrl from the DO. Return 400 with the specific
+      // message so the CLI can print it cleanly instead of "500 Internal
+      // server error".
+      if (error instanceof InvalidMcpServerUrl) {
+        return c.json({ error: error.message }, 400);
+      }
       return toRouteErrorResponse(c, error);
     }
   });
