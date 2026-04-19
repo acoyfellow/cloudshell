@@ -34,6 +34,7 @@ import { UnexpectedFailure } from './effect/errors';
 import { getUserSessionContainerId, readWorkerIdentity } from './auth';
 import { isContainerActiveStatus } from './tabs';
 import { startOAuth, completeOAuth, listConnections } from './mcp-oauth';
+import { bridgeMcpRequest } from './mcp-bridge';
 import type { Env } from './types';
 
 // Re-export the user-agent DO so alchemy can bind it as a Durable Object
@@ -269,6 +270,49 @@ function createApp() {
       if (!userId) return c.json({ error: 'X-User-Id required' }, 401);
       const connections = await listConnections(c.env, userId);
       return c.json({ connections });
+    } catch (error) {
+      return toRouteErrorResponse(c, error);
+    }
+  });
+
+  /**
+   * Bridge proxy to an upstream MCP server. The CLI (inside the
+   * container) sends the MCP JSON-RPC request here; we attach the
+   * stored OAuth bearer and forward to the upstream. Streaming-HTTP
+   * / SSE responses flow end-to-end without buffering.
+   *
+   * Query param `server` carries the upstream origin; the remainder
+   * of the path (after /mcp/bridge) is the MCP server's path
+   * ("mcp" or "sse" typically). Example:
+   *   POST /mcp/bridge/mcp?server=https://mcp.apify.com
+   *   ^ forwards to https://mcp.apify.com/mcp
+   */
+  app.all('/mcp/bridge/*', async (c) => {
+    try {
+      const userId = c.req.header('X-User-Id');
+      if (!userId) return c.json({ error: 'X-User-Id required' }, 401);
+      const serverUrl = c.req.query('server');
+      if (!serverUrl) {
+        return c.json({ error: 'server query param required' }, 400);
+      }
+      const baseRedirectUrl = c.req.header('X-Bridge-Redirect-Url');
+      if (!baseRedirectUrl) {
+        return c.json(
+          { error: 'X-Bridge-Redirect-Url header required' },
+          400
+        );
+      }
+
+      const fullPath = new URL(c.req.url).pathname;
+      const relativePath = fullPath.replace(/^\/mcp\/bridge/, '') || '/';
+
+      return await bridgeMcpRequest(c.env, {
+        userId,
+        serverUrl,
+        path: relativePath,
+        request: c.req.raw,
+        baseRedirectUrl,
+      });
     } catch (error) {
       return toRouteErrorResponse(c, error);
     }
