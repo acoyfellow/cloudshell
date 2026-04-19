@@ -46,6 +46,18 @@ type ErrorMessage struct {
 	Message string `json:"message"`
 }
 
+// BridgeTicketMessage — control frame from the browser delivering a
+// fresh MCP-bridge ticket for the `mcp` CLI. The browser has the user's
+// Better Auth session; it mints the ticket via POST /api/cloudshell/
+// ticket/mint-bridge and forwards it down to the container through
+// the terminal WebSocket. We write it to ~/.cloudshell/bridge-ticket
+// where the CLI picks it up. See worker/container/mcp-cli.mjs.
+type BridgeTicketMessage struct {
+	Type      string `json:"type"`
+	Ticket    string `json:"ticket"`
+	ExpiresAt int64  `json:"expiresAt"`
+}
+
 type SessionState struct {
 	SessionName string            `json:"sessionName"`
 	Scrollback  []string          `json:"scrollback"`
@@ -552,8 +564,24 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 			switch msgType {
 			case websocket.TextMessage:
-				var resizeMsg ResizeMessage
-				if err := json.Unmarshal(data, &resizeMsg); err == nil && resizeMsg.Type == "resize" {
+				// Text frames are control messages. We peek at the
+				// `type` field to route: resize -> PTY resize,
+				// bridge_ticket -> write MCP bridge ticket to disk.
+				// Unknown types are ignored; forwards-compatibility
+				// for future control messages doesn't need any
+				// client coordination.
+				var ctrl struct {
+					Type string `json:"type"`
+				}
+				if err := json.Unmarshal(data, &ctrl); err != nil {
+					continue
+				}
+				switch ctrl.Type {
+				case "resize":
+					var resizeMsg ResizeMessage
+					if err := json.Unmarshal(data, &resizeMsg); err != nil {
+						continue
+					}
 					if resizeMsg.Cols > 0 && resizeMsg.Rows > 0 {
 						log.Printf("Resize %s/%s/%s => %dx%d", username, sessionID, tabID, resizeMsg.Cols, resizeMsg.Rows)
 						pty.Setsize(ptmx, &pty.Winsize{
@@ -561,6 +589,31 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 							Rows: uint16(resizeMsg.Rows),
 						})
 					}
+				case "bridge_ticket":
+					var bt BridgeTicketMessage
+					if err := json.Unmarshal(data, &bt); err != nil {
+						log.Printf("bridge_ticket parse error for %s/%s/%s: %v", username, sessionID, tabID, err)
+						continue
+					}
+					if bt.Ticket == "" {
+						continue
+					}
+					// Write to ~/.cloudshell/bridge-ticket so the
+					// `mcp` CLI can read it. 0600 so only the shell
+					// owner (`user`) can read. Safe to silently swallow
+					// errors — the ticket is recoverable via re-send
+					// on the next WS message from the browser.
+					homeDir := userHomeDir(username)
+					dir := filepath.Join(homeDir, ".cloudshell")
+					if err := os.MkdirAll(dir, 0755); err != nil {
+						log.Printf("bridge_ticket mkdir error for %s: %v", username, err)
+						continue
+					}
+					if err := os.WriteFile(filepath.Join(dir, "bridge-ticket"), []byte(bt.Ticket), 0600); err != nil {
+						log.Printf("bridge_ticket write error for %s: %v", username, err)
+						continue
+					}
+					log.Printf("Wrote MCP bridge ticket for %s/%s/%s (exp=%d)", username, sessionID, tabID, bt.ExpiresAt)
 				}
 			case websocket.BinaryMessage:
 				if _, err := ptmx.Write(data); err != nil {

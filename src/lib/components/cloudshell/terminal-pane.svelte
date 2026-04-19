@@ -73,6 +73,38 @@ import LoadingPane from './loading-pane.svelte';
   }
 
   /**
+   * Fetch a fresh MCP bridge ticket (Better Auth session does the
+   * authentication) and forward it to the container over the terminal
+   * WebSocket. The container's Go server recognizes the
+   * `{type: "bridge_ticket"}` control frame and writes the token to
+   * ~/.cloudshell/bridge-ticket so the `mcp` CLI can read it.
+   *
+   * Swallowed errors by design — the terminal works without this and
+   * re-delivery happens on every reconnect. If we can't mint a ticket
+   * right now (e.g. Better Auth session just expired) the user's
+   * next `mcp login` will print a helpful error.
+   */
+  async function deliverBridgeTicket(ws: WebSocket) {
+    try {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      const response = await fetch('/api/cloudshell/ticket/mint-bridge', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!response.ok) return;
+      const { ticket, expiresAt } = (await response.json()) as {
+        ticket?: string;
+        expiresAt?: number;
+      };
+      if (!ticket) return;
+      if (ws.readyState !== WebSocket.OPEN) return;
+      ws.send(JSON.stringify({ type: 'bridge_ticket', ticket, expiresAt }));
+    } catch {
+      // Non-fatal: terminal works without MCP bridge.
+    }
+  }
+
+  /**
    * Server-side text frames carry JSON control messages, not terminal bytes.
    * Handling them explicitly stops `{"type":"ready"}` (and error/exit) from
    * rendering as literal text in the xterm canvas.
@@ -261,6 +293,12 @@ import LoadingPane from './loading-pane.svelte';
         resetReconnectBudget();
         scheduleTerminalFit();
         scheduleTerminalFit(120);
+        // Deliver an MCP bridge ticket to the container so the `mcp`
+        // CLI can authenticate against cloudshell.coey.dev without the
+        // user having to paste anything. The browser has the Better
+        // Auth session; the container never does. This is the only
+        // place a ticket ever enters the container's filesystem.
+        void deliverBridgeTicket(nextSocket);
       };
       nextSocket.onmessage = (event) => {
         if (sequence !== reconnectSequence) {
