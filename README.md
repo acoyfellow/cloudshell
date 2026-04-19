@@ -121,7 +121,30 @@ The browser does not connect to the container directly.
 
 If any hop drops that identity, the browser typically sees a websocket close like `1006` instead of a usable terminal.
 
-### Post-Containers-GA deploy footgun (2026-04-18)
+### Post-Containers-GA deploy footgun (2026-04-18) — FIXED in 0.91.2
+
+> **Short version:** this was an alchemy bug, fixed upstream on 2026-01-09 in
+> [PR #1298](https://github.com/sam-goodwin/alchemy/commit/a8996eed3f92105fc29eeb865d9fbae8c2f9c24d).
+> If you're on `alchemy >= 0.78`, skip to the next section. If you're pinned
+> below that, either upgrade or use the manual-delete workaround below.
+>
+> **Root cause:** Cloudflare's `POST /accounts/:id/containers/applications`
+> endpoint used to return `errors[].code === 1000` when a Durable Object
+> already had a container app bound to it. That code is now `1608`. Alchemy
+> `0.77.5` and earlier looked for `1000`, so the adopt-on-conflict recovery
+> branch in `createContainerApplication` never fired. Every subsequent deploy
+> threw `Failed to create container application: ... DURABLE_OBJECT_ALREADY_HAS_APPLICATION`
+> and required a manual `DELETE /containers/applications/<id>` before it
+> could proceed. Alchemy `0.78+` matches on `1608` and cleanly calls
+> `updateContainerApplication` on the existing record — deploys adopt the
+> existing app in place, preserving its ID and DO bindings.
+>
+> **How to tell you're hitting it:** every deploy, not just drift. Error message
+> on the deploy step is `DURABLE_OBJECT_ALREADY_HAS_APPLICATION`. The
+> container app ID stays the same across manual deletes (the name is
+> deterministic, derived from project + resource ID).
+
+### Manual workaround if you need it
 
 If the terminal returns `1006` / "Terminal unavailable" indefinitely **after all five
 hops look healthy**, check the account's container applications inventory before
@@ -175,7 +198,7 @@ effect immediately.
 **Do not delete `cloudshell-sandbox-runner` if it is the only healthy app and
 your terminal works.** Only the orphans and the stuck entries.
 
-#### How this diagnosis was reached
+#### How this diagnosis was reached (historical — kept for the next tool update)
 
 Having this as a documented pattern saves the next person the four-commit chase we
 did the first time:
