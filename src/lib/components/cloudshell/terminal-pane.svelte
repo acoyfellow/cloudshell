@@ -331,17 +331,19 @@
     style:background={TERMINAL_BACKGROUND}
   >
     <!--
-      wterm's DOM renderer adds the `.wterm` class to this element on init
-      and owns its own layout (padding, overflow, row height, measured char
-      width). We only override the CSS variables for our theme \u2014 do NOT set
-      inline font-family/size/color on this div, or wterm's char-width
-      measurement sees something inconsistent with the rendered rows and
-      pickling is off by a factor of 10 (1 col shown instead of ~100).
+      wterm's .wterm class sets `position: relative` on the host element,
+      which defeats `absolute inset-0`. The element collapses to its content
+      width (~62px, ~4 cols), which becomes the measured size, which the
+      Go PTY sees as cols=4, which wraps every few chars.
+      Fix: give the host a DEDICATED sizing parent, and let the host itself
+      use w-full/h-full inside it.
     -->
-    <div
-      bind:this={terminalElement}
-      class="absolute inset-0 wterm-host"
-    ></div>
+    <div class="absolute inset-0 min-h-0 min-w-0">
+      <div
+        bind:this={terminalElement}
+        class="wterm-host h-full w-full"
+      ></div>
+    </div>
 
     {#if controller.terminalStatus !== 'connected'}
       {#if controller.terminalStatus === 'connecting'}
