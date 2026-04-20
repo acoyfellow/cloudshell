@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -474,6 +476,29 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	if err := os.MkdirAll(userHome, 0755); err != nil {
 		http.Error(w, "failed to initialize user workspace", http.StatusInternalServerError)
 		return
+	}
+	// Seed ~/.tmux.conf for this user. tmux reads ~/.tmux.conf on
+	// every new-session, so we need it at /home/user/<username>/.tmux.conf
+	// (NOT /home/user/.tmux.conf, which is where startup.sh was seeding it
+	// before \u2014 that path is ignored by tmux because HOME is the per-user
+	// subdir). Copied fresh every connect so config updates in the image
+	// propagate without requiring users to delete a stale dotfile.
+	if src, err := os.ReadFile("/opt/cloudshell/.tmux.conf"); err == nil {
+		tmuxConfPath := filepath.Join(userHome, ".tmux.conf")
+		if err := os.WriteFile(tmuxConfPath, src, 0644); err == nil {
+			// chown so later tmux invocations (running as user, not root)
+			// can read it. Best-effort \u2014 if chown fails, tmux will still
+			// read the file so long as it's world-readable (0644 above).
+			if u, err := user.Lookup(username); err == nil {
+				if uid, err := strconv.Atoi(u.Uid); err == nil {
+					if gid, err := strconv.Atoi(u.Gid); err == nil {
+						_ = os.Chown(tmuxConfPath, uid, gid)
+					}
+				}
+			}
+		} else {
+			log.Printf("seed .tmux.conf failed for %s: %v", username, err)
+		}
 	}
 	if err := ensureSessionDirs(username, sessionID); err != nil {
 		http.Error(w, "failed to initialize session workspace", http.StatusInternalServerError)

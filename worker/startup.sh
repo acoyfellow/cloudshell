@@ -23,12 +23,10 @@ mkdir -p /home/user 2>/dev/null || echo "startup: mkdir /home/user failed (non-f
 hostname cloudshell 2>/dev/null || true
 echo cloudshell > /etc/hostname 2>/dev/null || true
 
-if [ ! -f /home/user/.tmux.conf ] && [ -f /opt/cloudshell/.tmux.conf ]; then
-    cp /opt/cloudshell/.tmux.conf /home/user/.tmux.conf 2>/dev/null \
-        || echo "startup: cp .tmux.conf failed (non-fatal)"
-    chown user:user /home/user/.tmux.conf 2>/dev/null \
-        || echo "startup: chown .tmux.conf failed (non-fatal)"
-fi
+# NOTE: .tmux.conf is seeded per-user in main.go handleWebSocket, not here.
+# Each cloudshell user has HOME=/home/user/<username>/, so writing
+# /home/user/.tmux.conf from startup.sh does nothing (tmux never looks
+# there). See main.go's seed block for the real write path.
 
 echo "startup: FUSE disabled post-GA — running local /home/user"
 echo "startup: execing /server"

@@ -377,32 +377,21 @@ import LoadingPane from './loading-pane.svelte';
       scheduleTerminalFit();
     });
 
-    // Mouse wheel → scrollback. xterm's DOM renderer keeps scrollback
-    // in an internal buffer, not in the viewport's scrollHeight, so
-    // the browser's native wheel-scroll hits an already-full viewport
-    // and does nothing. We capture wheel events on the host and route
-    // them to xterm's programmatic scrollLines() — which DOES walk
-    // the buffer.
+    // NOTE ON MOUSE WHEEL:
+    // Do NOT install a custom wheel handler here. Cloudshell runs
+    // tmux inside the container; when the browser's wheel event
+    // reaches xterm, xterm forwards it as an escape sequence to
+    // tmux, which \u2014 with `set -g mouse on` in ~/.tmux.conf \u2014 enters
+    // copy mode and scrolls the tmux buffer. That IS the scroll
+    // experience.
     //
-    // This is the scrolling fix that was missing from cloudshell all
-    // along. Without this, users could only scroll with Shift+PageUp,
-    // which nobody knows to try.
-    const WHEEL_LINE_HEIGHT = 17; // keep in sync with the DOM row height
-    const onWheel = (ev: WheelEvent) => {
-      if (!terminal) return;
-      // Normalize delta to approximately "lines". deltaMode 0 = pixels,
-      // deltaMode 1 = lines, deltaMode 2 = pages.
-      let lines: number;
-      if (ev.deltaMode === 1) lines = Math.round(ev.deltaY);
-      else if (ev.deltaMode === 2) lines = Math.round(ev.deltaY) * terminal.rows;
-      else lines = Math.round(ev.deltaY / WHEEL_LINE_HEIGHT);
-      if (lines === 0) return;
-      terminal.scrollLines(lines);
-      // Stop the wheel from bubbling up and scrolling the page body
-      // when the user is clearly scrolling the terminal.
-      ev.preventDefault();
-    };
-    terminalElement!.addEventListener('wheel', onWheel, { passive: false });
+    // An earlier attempt called terminal.scrollLines() on wheel.
+    // That scrolled xterm's scrollback buffer \u2014 but xterm's buffer
+    // is empty because tmux is in alt-screen mode and manages its
+    // own scrollback. Wrong layer. Removed.
+    //
+    // If tmux's mouse mode isn't loading (e.g. ~/.tmux.conf missing),
+    // fix at the config layer, not with a JS handler.
 
     terminal.onData((data: string) => {
       if (socket?.readyState === WebSocket.OPEN) {
@@ -453,7 +442,6 @@ import LoadingPane from './loading-pane.svelte';
       window.removeEventListener('online', onVisibilityOrFocus);
       window.visualViewport?.removeEventListener('resize', resize);
       document.removeEventListener('visibilitychange', onVisibilityOrFocus);
-      terminalElement?.removeEventListener('wheel', onWheel);
       resizeObserver?.disconnect();
       resizeObserver = null;
     };
