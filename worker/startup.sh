@@ -16,6 +16,13 @@
 
 mkdir -p /home/user 2>/dev/null || echo "startup: mkdir /home/user failed (non-fatal)"
 
+# Rebrand the hostname so the prompt says cloudshell instead of the CF
+# Firecracker default 'cloudchamber'. hostname(1) is present in alpine's
+# busybox; fall back to a /etc/hostname write which most shells honor
+# when they re-read the env.
+hostname cloudshell 2>/dev/null || true
+echo cloudshell > /etc/hostname 2>/dev/null || true
+
 if [ ! -f /home/user/.tmux.conf ] && [ -f /opt/cloudshell/.tmux.conf ]; then
     cp /opt/cloudshell/.tmux.conf /home/user/.tmux.conf 2>/dev/null \
         || echo "startup: cp .tmux.conf failed (non-fatal)"

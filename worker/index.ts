@@ -33,7 +33,7 @@ import {
 import { UnexpectedFailure } from './effect/errors';
 import { getUserSessionContainerId, readWorkerIdentity } from './auth';
 import { isContainerActiveStatus } from './tabs';
-import { startOAuth, completeOAuth, listConnections } from './mcp-oauth';
+import { startOAuth, completeOAuth, listConnections, disconnect } from './mcp-oauth';
 import { bridgeMcpRequest } from './mcp-bridge';
 import { InvalidMcpServerUrl } from './user-agent';
 import type { Env } from './types';
@@ -278,6 +278,27 @@ function createApp() {
       if (!userId) return c.json({ error: 'X-User-Id required' }, 401);
       const connections = await listConnections(c.env, userId);
       return c.json({ connections });
+    } catch (error) {
+      return toRouteErrorResponse(c, error);
+    }
+  });
+
+  /**
+   * Disconnect a stored MCP connection. Called by `mcp logout <url>`
+   * and by the UI's "Disconnect" button. Clears tokens + client_info
+   * + state + code_verifier for this (user, server) pair, and removes
+   * the entry from the user's connection index. Idempotent.
+   */
+  app.delete('/mcp/connections', async (c) => {
+    try {
+      const userId = c.req.header('X-User-Id');
+      if (!userId) return c.json({ error: 'X-User-Id required' }, 401);
+      const serverUrl = c.req.query('server');
+      if (!serverUrl) {
+        return c.json({ error: 'server query param required' }, 400);
+      }
+      const result = await disconnect(c.env, userId, serverUrl);
+      return c.json(result);
     } catch (error) {
       return toRouteErrorResponse(c, error);
     }

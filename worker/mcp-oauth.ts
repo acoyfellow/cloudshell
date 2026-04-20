@@ -89,23 +89,48 @@ export function parseServerIdFromState(state: string): string | null {
 export interface McpConnectionPublic {
   readonly serverId: string;
   readonly connectedAt: number;
+  /**
+   * One of:
+   *   'active'  — token present and not expired (or no expiry was provided)
+   *   'expired' — token present but `expires_in` already elapsed, AND there
+   *               is no refresh_token (so we can't silently refresh).
+   *               CLI should suggest `mcp login` again.
+   *   'broken'  — connection index entry exists but no access_token in
+   *               storage. Shouldn't happen normally; self-healing by
+   *               running login again.
+   */
+  readonly status: 'active' | 'expired' | 'broken';
+  /** Unix ms when the access token goes stale. null if unknown. */
+  readonly tokenExpiresAt: number | null;
 }
 
 /**
- * List MCP servers the user has authorized. Cheap — reads the DO's
- * connection index, which is a single KV lookup. Does not call the
- * upstream provider.
+ * List MCP servers the user has authorized, annotated with token
+ * status so the CLI can surface 'expired' without an extra roundtrip.
+ * Driven by the DO's annotated listConnections method.
  */
 export async function listConnections(
   env: Env,
   userId: string
 ): Promise<McpConnectionPublic[]> {
   const agent = getUserAgent(env, userId);
-  const records = await (agent as any).listConnections();
-  return records.map((r: { serverId: string; connectedAt: number }) => ({
-    serverId: r.serverId,
-    connectedAt: r.connectedAt,
-  }));
+  return (await (agent as any).listConnectionsAnnotated()) as McpConnectionPublic[];
+}
+
+/**
+ * Remove a stored MCP connection for `userId` + `serverUrl`. Delegates
+ * to the DO to clear the connection index entry, the saved tokens,
+ * client_info, and code_verifier for this (user, server) pair.
+ */
+export async function disconnect(
+  env: Env,
+  userId: string,
+  serverUrl: string
+): Promise<{ removed: boolean }> {
+  const agent = getUserAgent(env, userId);
+  return (await (agent as any).disconnectServer({ serverId: serverUrl })) as {
+    removed: boolean;
+  };
 }
 
 /**

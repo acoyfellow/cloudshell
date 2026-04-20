@@ -286,6 +286,100 @@ export class CloudshellUserAgent extends Agent<Env> {
   }
 
   /**
+   * listConnections annotated with token status so the CLI / UI can
+   * show "active" vs "expired" without a second RPC. Iterates through
+   * connection records, reads the stored tokens for each, and
+   * computes expiry. Does NOT perform any network call; the refresh
+   * flow happens only when a bridge call is actually made.
+   */
+  async listConnectionsAnnotated(): Promise<
+    Array<{
+      serverId: string;
+      connectedAt: number;
+      status: 'active' | 'expired' | 'broken';
+      tokenExpiresAt: number | null;
+    }>
+  > {
+    const records = await this.listConnections();
+    const out: Array<{
+      serverId: string;
+      connectedAt: number;
+      status: 'active' | 'expired' | 'broken';
+      tokenExpiresAt: number | null;
+    }> = [];
+    for (const r of records) {
+      const provider = this.provider({
+        serverId: r.serverId,
+        baseRedirectUrl: 'https://cloudshell.coey.dev/api/mcp/oauth/callback',
+      });
+      provider.clientId = r.clientId;
+      let status: 'active' | 'expired' | 'broken' = 'broken';
+      let tokenExpiresAt: number | null = null;
+      try {
+        const tokens = await provider.tokens();
+        if (tokens?.access_token) {
+          if (typeof tokens.expires_in === 'number') {
+            const expiresAtMs = r.connectedAt + tokens.expires_in * 1000;
+            tokenExpiresAt = expiresAtMs;
+            // 60s grace window — if we're within 60s of expiry, call it
+            // expired already, since a tool call starting now may not
+            // finish before the token dies.
+            if (Date.now() > expiresAtMs - 60_000) {
+              status = tokens.refresh_token ? 'active' : 'expired';
+              // If refresh_token exists, we can refresh on next call,
+              // so leave as 'active'. If not, user must re-login.
+            } else {
+              status = 'active';
+            }
+          } else {
+            // No expires_in from upstream — treat as active, no way to
+            // tell.
+            status = 'active';
+          }
+        }
+      } catch {
+        status = 'broken';
+      }
+      out.push({
+        serverId: r.serverId,
+        connectedAt: r.connectedAt,
+        status,
+        tokenExpiresAt,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Fully disconnect a stored MCP connection. Clears:
+   *   - the connection index entry
+   *   - the provider's saved tokens, client_info, state, code_verifier
+   *     (via invalidateCredentials({scope:'all'}))
+   * Idempotent: returns { removed: false } if nothing was stored.
+   */
+  async disconnectServer(params: {
+    readonly serverId: string;
+  }): Promise<{ removed: boolean }> {
+    const existing = await this.listConnections();
+    const record = existing.find((c) => c.serverId === params.serverId);
+    if (!record) return { removed: false };
+
+    const provider = this.provider({
+      serverId: params.serverId,
+      baseRedirectUrl: 'https://cloudshell.coey.dev/api/mcp/oauth/callback',
+    });
+    provider.clientId = record.clientId;
+    try {
+      await provider.invalidateCredentials('all');
+    } catch {
+      // Best-effort: even if invalidation trips, we still want to
+      // drop the index entry so mcp list stops showing a stale record.
+    }
+    await this.forgetConnection(params.serverId);
+    return { removed: true };
+  }
+
+  /**
    * Inspect a connection including the (non-secret) token expiry. The
    * access token itself is never returned by this method; the bridge
    * reads it via `provider.tokens()` and forwards to upstream MCP

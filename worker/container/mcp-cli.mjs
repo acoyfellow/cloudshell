@@ -120,6 +120,26 @@ async function jsonOrThrow(response, context) {
   );
 }
 
+/**
+ * Check whether a non-ok bridge response is the "your OAuth token
+ * isn't usable anymore" signal from the Worker. If yes, print a
+ * focused hint and exit cleanly. Returns true if handled (caller
+ * should not throw again); false otherwise.
+ *
+ * Matches bridgeMcpRequest's 401 JSON shape:
+ *   { error: 'not_connected', detail: '...' }
+ */
+async function handleNotConnected(response, serverUrl) {
+  if (response.status !== 401) return false;
+  const bodyText = await response.text().catch(() => '');
+  if (!bodyText.includes('not_connected')) return false;
+  console.error(
+    `MCP token for ${serverUrl} is not active (expired, revoked, or never completed).`
+  );
+  console.error(`Run: mcp login ${serverUrl}`);
+  process.exit(2);
+}
+
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
@@ -148,15 +168,36 @@ async function cmdLogin(serverUrl) {
   // read the current connections list.
   requireTicket();
 
-  // Is it already connected?
+  // Check existing connection state so we only short-circuit when the
+  // stored token is still actually usable. An expired/broken entry
+  // means we need a full new OAuth flow — NOT a silent "already
+  // connected" message that leaves the user stuck with a dead token.
   const { connections } = await jsonOrThrow(
     await bridgeFetch('/api/mcp/connections'),
     'Failed to fetch connections'
   );
   const existing = (connections || []).find((c) => c.serverId === serverUrl);
-  if (existing) {
-    console.log(`Already connected to ${serverUrl} (since ${new Date(existing.connectedAt).toISOString()}).`);
+  if (existing && existing.status === 'active') {
+    console.log(
+      `Already connected to ${serverUrl} (since ${new Date(existing.connectedAt).toISOString()}).`
+    );
     return;
+  }
+  if (existing && existing.status !== 'active') {
+    console.log(
+      `Existing ${existing.status} connection for ${serverUrl}; starting fresh login.`
+    );
+    // Best-effort cleanup so the new flow doesn't fight stale state.
+    // Swallow errors \u2014 logout is idempotent; server-side still prefers
+    // 'active' if somehow the cleanup race-loses.
+    try {
+      await bridgeFetch(
+        `/api/mcp/connections?server=${encodeURIComponent(serverUrl)}`,
+        { method: 'DELETE' }
+      );
+    } catch {
+      // non-fatal
+    }
   }
 
   // Ask the cloudshell app to start an OAuth flow. This returns an
@@ -221,7 +262,36 @@ async function cmdList() {
   }
   for (const c of list) {
     const when = new Date(c.connectedAt).toISOString();
-    console.log(`${c.serverId}\t${when}`);
+    const status = c.status || 'active';
+    const expiry = c.tokenExpiresAt
+      ? `  (token ${status}, expires ${new Date(c.tokenExpiresAt).toISOString()})`
+      : `  (${status})`;
+    console.log(`${c.serverId}\t${when}${expiry}`);
+  }
+}
+
+async function cmdLogout(serverUrl) {
+  if (!serverUrl) {
+    console.error('Usage: mcp logout <server-url>');
+    console.error('Example: mcp logout https://portal.mcp.cfdata.org/mcp');
+    process.exit(1);
+  }
+  requireTicket();
+  const response = await bridgeFetch(
+    `/api/mcp/connections?server=${encodeURIComponent(serverUrl)}`,
+    { method: 'DELETE' }
+  );
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(
+      `Failed to disconnect: HTTP ${response.status}${text ? ` \u2014 ${text.slice(0, 400)}` : ''}`
+    );
+  }
+  const body = await response.json();
+  if (body?.removed) {
+    console.log(`Disconnected from ${serverUrl}.`);
+  } else {
+    console.log(`No connection for ${serverUrl} (already disconnected).`);
   }
 }
 
@@ -261,6 +331,9 @@ async function mcpHandshake(serverUrl) {
     body: JSON.stringify(initRpc),
   });
   if (!response.ok) {
+    // If the bridge says "not_connected", surface that as a focused
+    // "run mcp login" hint instead of a wall of HTTP + JSON.
+    await handleNotConnected(response, serverUrl);
     const text = await response.text().catch(() => '');
     throw new Error(
       `initialize failed: HTTP ${response.status}${
@@ -362,6 +435,7 @@ async function cmdCall(serverUrl, method, ...paramArgs) {
   });
 
   if (!response.ok) {
+    await handleNotConnected(response, serverUrl);
     const text = await response.text().catch(() => '');
     throw new Error(
       `HTTP ${response.status} ${response.statusText}${
@@ -423,7 +497,8 @@ function cmdHelp() {
   console.log(`mcp — cloudshell's MCP client
 
   mcp login <server>              — open browser to authorize an MCP server
-  mcp list                        — list connected MCP servers
+  mcp logout <server>             — remove a stored MCP connection
+  mcp list                        — list connected MCP servers (with token status)
   mcp call <server> <method> [p]  — send an MCP JSON-RPC call
   mcp whoami                      — show ticket identity + expiry
   mcp help                        — show this help
@@ -467,6 +542,9 @@ async function main() {
       break;
     case 'list':
       await cmdList();
+      break;
+    case 'logout':
+      await cmdLogout(rest[0]);
       break;
     case 'call':
       await cmdCall(...rest);
