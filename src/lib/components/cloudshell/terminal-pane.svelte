@@ -238,8 +238,8 @@
         return;
       }
       // Fallback for text frames that aren't control messages: write as bytes.
-      terminal.write(new TextEncoder().encode(payload));
-      controller.recordTerminalOutput(payload);
+      terminal.write(payloadEncoder.encode(payload));
+      if (controller.isRecording) controller.recordTerminalOutput(payload);
       return;
     }
 
@@ -249,10 +249,18 @@
     }
 
     const bytes = new Uint8Array(payload);
-    const text = new TextDecoder().decode(bytes);
     terminal.write(bytes);
-    controller.recordTerminalOutput(text);
+    // Skip the decode on the hot path unless we are actively recording.
+    // PTY frames can be thousands of bytes (colored output, redraws);
+    // decoding every one just to push into a disabled buffer shows up
+    // in sustained paint latency.
+    if (controller.isRecording) {
+      controller.recordTerminalOutput(payloadDecoder.decode(bytes));
+    }
   }
+
+  const payloadEncoder = new TextEncoder();
+  const payloadDecoder = new TextDecoder();
 
   async function reconnectTerminal() {
     if (!browser || !terminal || !sessionId || !tabId) {
@@ -347,16 +355,21 @@
   }
 
   async function initializeTerminal() {
+    const keyDecoder = new TextDecoder();
     terminal = await mountCloudterm(terminalElement!, {
       onData: (bytes: Uint8Array) => {
         if (socket?.readyState === WebSocket.OPEN) {
           socket.send(bytes);
         }
-        try {
-          controller.recordTerminalOutput(new TextDecoder().decode(bytes));
-        } catch {
-          // decoding should never fail on keyboard input, but do not
-          // let a malformed byte sequence crash the terminal.
+        // Decode only when actually recording, not on every keystroke. The
+        // decoder itself is cheap but the string allocation + Array.push
+        // shows up in keypress latency traces on sustained typing.
+        if (controller.isRecording) {
+          try {
+            controller.recordTerminalOutput(keyDecoder.decode(bytes));
+          } catch {
+            // decoding should never fail on keyboard input; ignore.
+          }
         }
       },
       onResize: () => {
