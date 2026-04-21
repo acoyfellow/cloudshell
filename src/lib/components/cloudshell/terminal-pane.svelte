@@ -249,25 +249,7 @@
     }
 
     const bytes = new Uint8Array(payload);
-    if (perfDebug && perfSentAt > 0) {
-      console.log(
-        `[cloudshell-perf] frame_in bytes=${bytes.length} +${(performance.now() - perfSentAt).toFixed(1)}ms from sent`,
-      );
-    }
     terminal.write(bytes);
-    if (perfDebug && perfSentAt > 0) {
-      // write() schedules a paint on rAF. Measure paint settle by
-      // piggybacking on a second rAF after the one cloudterm uses.
-      const sentAt = perfSentAt;
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          console.log(
-            `[cloudshell-perf] painted +${(performance.now() - sentAt).toFixed(1)}ms from sent`,
-          );
-        });
-      });
-      perfSentAt = 0; // only log the first inbound frame per keystroke
-    }
     // Skip the decode on the hot path unless we are actively recording.
     // PTY frames can be thousands of bytes (colored output, redraws);
     // decoding every one just to push into a disabled buffer shows up
@@ -372,30 +354,10 @@
     }
   }
 
-  // Perf instrumentation, gated by ?debug=perf. When on, logs four times
-  // per keystroke:
-  //   keydown       browser delivered the event
-  //   sent          bytes on WebSocket (delta from keydown)
-  //   frame_in      first PTY bytes arrived (delta from sent = network RTT)
-  //   painted       next-next rAF after frame_in (delta from sent includes
-  //                 render time after network)
-  // Helps isolate whether slow typing is network, parse, render, or
-  // component overhead.
-  const perfDebug = browser && new URLSearchParams(window.location.search).get('debug') === 'perf';
-  let perfKeydownAt = 0;
-  let perfSentAt = 0;
-
   async function initializeTerminal() {
     const keyDecoder = new TextDecoder();
     terminal = await mountCloudterm(terminalElement!, {
       onData: (bytes: Uint8Array) => {
-        if (perfDebug) {
-          perfSentAt = performance.now();
-          const kd = perfKeydownAt
-            ? `+${(perfSentAt - perfKeydownAt).toFixed(1)}ms from keydown`
-            : '';
-          console.log(`[cloudshell-perf] sent bytes=${bytes.length} ${kd}`);
-        }
         if (socket?.readyState === WebSocket.OPEN) {
           socket.send(bytes);
         }
@@ -425,23 +387,6 @@
       },
       maxScrollback: 10_000,
     });
-
-    // Perf: log keydown at the earliest possible moment. Capture phase so
-    // we fire before cloudterm's own keydown handler (which runs
-    // evaluateKeyboardEvent + onData). Delta to 'sent' shows how long
-    // cloudterm took to turn the key into bytes.
-    if (perfDebug && terminalElement) {
-      terminalElement.addEventListener(
-        'keydown',
-        (e) => {
-          perfKeydownAt = performance.now();
-          console.log(
-            `[cloudshell-perf] keydown key=${JSON.stringify((e as KeyboardEvent).key)}`,
-          );
-        },
-        { capture: true },
-      );
-    }
 
     scheduleTerminalFit();
     scheduleTerminalFit(120);

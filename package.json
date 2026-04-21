@@ -51,7 +51,7 @@
   "dependencies": {
     "@cloudflare/containers": "^0.3.2",
     "@lucide/svelte": "^1.8.0",
-    "cloudterm": "github:acoyfellow/cloudterm#v0.0.8",
+    "cloudterm": "github:acoyfellow/cloudterm#v0.0.9",
     "agents": "^0.11.4",
     "alchemy": "^0.91.2",
     "better-auth": "1.6.5",
