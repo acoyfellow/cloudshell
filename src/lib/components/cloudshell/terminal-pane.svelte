@@ -3,8 +3,15 @@
   import { onMount } from 'svelte';
   import AlertCircle from '@lucide/svelte/icons/alert-circle';
   import '@xterm/xterm/css/xterm.css';
-import type { WorkspaceController } from '$lib/cloudshell/workspace-controller.svelte';
-import LoadingPane from './loading-pane.svelte';
+  import 'cloudterm/style.css';
+  import type { WorkspaceController } from '$lib/cloudshell/workspace-controller.svelte';
+  import LoadingPane from './loading-pane.svelte';
+  import {
+    getRendererFactory,
+    resolveRendererId,
+    type RendererId,
+    type TerminalRenderer,
+  } from './renderers';
 
   let {
     controller,
@@ -20,8 +27,8 @@ import LoadingPane from './loading-pane.svelte';
 
   let terminalElement = $state<HTMLDivElement | null>(null);
   let socket: WebSocket | null = null;
-  let terminal: any = null;
-  let fitAddon: any = null;
+  let terminal: TerminalRenderer | null = null;
+  let rendererId = $state<RendererId>('xterm');
   let resizeObserver: ResizeObserver | null = null;
   let disposeResize: (() => void) | null = null;
   let reconnectSequence = 0;
@@ -138,7 +145,8 @@ import LoadingPane from './loading-pane.svelte';
       case 'exit':
         // shell exited; show a friendly prompt, then let user click to reconnect
         try {
-          terminal?.writeln(`\r\n[shell exited${typeof msg.code === 'number' ? ` code=${msg.code}` : ''}]`);
+          const line = `\r\n[shell exited${typeof msg.code === 'number' ? ` code=${msg.code}` : ''}]\r\n`;
+          terminal?.write(new TextEncoder().encode(line));
         } catch {
           // ignore
         }
@@ -170,7 +178,7 @@ import LoadingPane from './loading-pane.svelte';
   }
 
   function runTerminalFit() {
-    if (!browser || !terminal || !fitAddon || !terminalElement) {
+    if (!browser || !terminal || !terminalElement) {
       return;
     }
 
@@ -179,12 +187,11 @@ import LoadingPane from './loading-pane.svelte';
       return;
     }
 
-    try {
-      fitAddon.fit();
-      sendTerminalResize();
-    } catch {
-      // xterm can throw during rapid layout changes while the DOM is settling.
-    }
+    // The renderer adapter swallows transient layout errors internally
+    // (xterm in particular can throw during rapid resizes while the
+    // DOM is still settling), so we don't need a try/catch here.
+    terminal.fit();
+    sendTerminalResize();
   }
 
   function scheduleTerminalFit(delay = 0) {
@@ -231,12 +238,16 @@ import LoadingPane from './loading-pane.svelte';
       // Server-side text frames are JSON control messages (ready/error/exit),
       // not terminal bytes. PTY bytes always arrive as binary frames. Route
       // control messages through handleControlMessage so they don't render as
-      // literal text in the xterm canvas (pre-fix: `{"type":"ready"}` was
+      // literal text in the terminal (pre-fix: `{"type":"ready"}` was
       // visible at the top of every freshly attached terminal).
       if (handleControlMessage(payload)) {
         return;
       }
-      terminal.write(payload);
+      // Fallback for text frames that aren't control messages: encode to
+      // bytes so it matches the renderer adapter's Uint8Array contract.
+      // Both xterm and cloudterm accept UTF-8 bytes; result is identical
+      // to the previous string-path behavior.
+      terminal.write(new TextEncoder().encode(payload));
       controller.recordTerminalOutput(payload);
       return;
     }
@@ -246,8 +257,9 @@ import LoadingPane from './loading-pane.svelte';
       return;
     }
 
-    const text = new TextDecoder().decode(payload);
-    terminal.write(new Uint8Array(payload));
+    const bytes = new Uint8Array(payload);
+    const text = new TextDecoder().decode(bytes);
+    terminal.write(bytes);
     controller.recordTerminalOutput(text);
   }
 
@@ -343,65 +355,40 @@ import LoadingPane from './loading-pane.svelte';
   }
 
   async function initializeTerminal() {
-    const [{ Terminal }, { FitAddon }] = await Promise.all([
-      import('@xterm/xterm'),
-      import('@xterm/addon-fit'),
-    ]);
+    // Renderer choice is read from the URL once at mount. Unknown or
+    // missing values collapse to 'xterm' so typos never break the
+    // default path. See renderers/types.ts for the full list.
+    rendererId = resolveRendererId(
+      browser ? new URLSearchParams(window.location.search).get('renderer') : null
+    );
 
-    terminal = new Terminal({
-      cursorBlink: true,
-      fontFamily: '"IBM Plex Mono", "SFMono-Regular", ui-monospace, monospace',
-      fontSize: 13,
-      theme: {
-        background: TERMINAL_BACKGROUND,
-        foreground: '#f2efe8',
-        cursor: '#f7f4ed',
-        selectionBackground: '#6b7cff33',
+    const factory = await getRendererFactory(rendererId);
+
+    terminal = await factory({
+      host: terminalElement!,
+      onData: (bytes: Uint8Array) => {
+        if (socket?.readyState === WebSocket.OPEN) {
+          socket.send(bytes);
+        }
+        try {
+          controller.recordTerminalOutput(new TextDecoder().decode(bytes));
+        } catch {
+          // decoding should never fail on keyboard input, but do not
+          // let a malformed byte sequence crash the terminal.
+        }
       },
-      allowTransparency: true,
-      // Keep plenty of history for the cf-portal tools/list style
-      // output. Default is 1000; a long conversation with an agent
-      // easily blows past that.
-      scrollback: 10_000,
-      // Lets xterm smooth-animate scrollback jumps rather than
-      // stuttering a frame at a time.
-      smoothScrollDuration: 150,
+      onResize: () => {
+        // Dedup + wire-through is handled in sendTerminalResize; it
+        // reads cols/rows from the adapter directly so we don't pass
+        // them in here.
+        sendTerminalResize();
+      },
     });
 
-    fitAddon = new FitAddon();
-    terminal.loadAddon(fitAddon);
-    terminal.open(terminalElement!);
     scheduleTerminalFit();
     scheduleTerminalFit(120);
     void document.fonts?.ready.then(() => {
       scheduleTerminalFit();
-    });
-
-    // NOTE ON MOUSE WHEEL:
-    // Do NOT install a custom wheel handler here. Cloudshell runs
-    // tmux inside the container; when the browser's wheel event
-    // reaches xterm, xterm forwards it as an escape sequence to
-    // tmux, which \u2014 with `set -g mouse on` in ~/.tmux.conf \u2014 enters
-    // copy mode and scrolls the tmux buffer. That IS the scroll
-    // experience.
-    //
-    // An earlier attempt called terminal.scrollLines() on wheel.
-    // That scrolled xterm's scrollback buffer \u2014 but xterm's buffer
-    // is empty because tmux is in alt-screen mode and manages its
-    // own scrollback. Wrong layer. Removed.
-    //
-    // If tmux's mouse mode isn't loading (e.g. ~/.tmux.conf missing),
-    // fix at the config layer, not with a JS handler.
-
-    terminal.onData((data: string) => {
-      if (socket?.readyState === WebSocket.OPEN) {
-        socket.send(new TextEncoder().encode(data));
-      }
-      controller.recordTerminalOutput(data);
-    });
-
-    terminal.onResize(() => {
-      sendTerminalResize();
     });
 
     const resize = () => {
@@ -468,7 +455,7 @@ import LoadingPane from './loading-pane.svelte';
     return () => {
       cancelScheduledReconnect();
       socket?.close();
-      terminal?.dispose();
+      terminal?.destroy();
       if (fitTimeout !== null) {
         window.clearTimeout(fitTimeout);
       }
@@ -489,6 +476,15 @@ import LoadingPane from './loading-pane.svelte';
       bind:this={terminalElement}
       class="absolute inset-0 min-h-0 min-w-0 overflow-hidden"
     ></div>
+
+    {#if rendererId !== 'xterm'}
+      <div
+        class="bg-card text-muted-foreground pointer-events-none absolute right-2 top-2 z-20 rounded-md border px-2 py-0.5 font-mono text-xs shadow-none"
+        aria-hidden="true"
+      >
+        renderer: {rendererId}
+      </div>
+    {/if}
 
     {#if controller.terminalStatus !== 'connected'}
       {#if controller.terminalStatus === 'connecting'}
