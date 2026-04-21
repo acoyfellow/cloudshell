@@ -388,13 +388,6 @@
   async function initializeTerminal() {
     const keyDecoder = new TextDecoder();
     terminal = await mountCloudterm(terminalElement!, {
-      // Speculation is disabled in cloudshell until the redraw-interaction
-      // bug is fixed. Symptom: running programs that use cursor positioning
-      // (e.g. `mcp list`) lose their output; cursor jumps to a fresh prompt
-      // but the intermediate render is dropped. Repro takes seconds in any
-      // authenticated session. Re-enable once cloudterm's reconciliation
-      // handles cursor-motion-heavy output without eating authoritative text.
-      predictionMode: 'off',
       onData: (bytes: Uint8Array) => {
         if (perfDebug) {
           perfSentAt = performance.now();
