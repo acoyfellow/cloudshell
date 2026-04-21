@@ -2,16 +2,11 @@
   import { browser } from '$app/environment';
   import { onMount } from 'svelte';
   import AlertCircle from '@lucide/svelte/icons/alert-circle';
-  import '@xterm/xterm/css/xterm.css';
   import 'cloudterm/style.css';
+  import { mount as mountCloudterm } from 'cloudterm';
+  import type { Terminal as CloudtermTerminal } from 'cloudterm';
   import type { WorkspaceController } from '$lib/cloudshell/workspace-controller.svelte';
   import LoadingPane from './loading-pane.svelte';
-  import {
-    getRendererFactory,
-    resolveRendererId,
-    type RendererId,
-    type TerminalRenderer,
-  } from './renderers';
 
   let {
     controller,
@@ -27,8 +22,7 @@
 
   let terminalElement = $state<HTMLDivElement | null>(null);
   let socket: WebSocket | null = null;
-  let terminal: TerminalRenderer | null = null;
-  let rendererId = $state<RendererId>('xterm');
+  let terminal: CloudtermTerminal | null = null;
   let resizeObserver: ResizeObserver | null = null;
   let disposeResize: (() => void) | null = null;
   let reconnectSequence = 0;
@@ -53,7 +47,7 @@
     if (reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
       controller.setTerminalStatus(
         'disconnected',
-        `Terminal connection lost${lastDisconnectReason ? ` — ${lastDisconnectReason}` : ''}. Click to retry.`
+        `Terminal connection lost${lastDisconnectReason ? ` - ${lastDisconnectReason}` : ''}. Click to retry.`
       );
       return;
     }
@@ -86,7 +80,7 @@
    * `{type: "bridge_ticket"}` control frame and writes the token to
    * ~/.cloudshell/bridge-ticket so the `mcp` CLI can read it.
    *
-   * Swallowed errors by design — the terminal works without this and
+   * Swallowed errors by design: the terminal works without this and
    * re-delivery happens on every reconnect. If we can't mint a ticket
    * right now (e.g. Better Auth session just expired) the user's
    * next `mcp login` will print a helpful error.
@@ -114,7 +108,7 @@
   /**
    * Server-side text frames carry JSON control messages, not terminal bytes.
    * Handling them explicitly stops `{"type":"ready"}` (and error/exit) from
-   * rendering as literal text in the xterm canvas.
+   * rendering as literal text in the terminal grid.
    *
    * Known types from worker/container/main.go:
    *   - {type: "ready"}           first frame after pty.Start succeeds
@@ -187,10 +181,11 @@
       return;
     }
 
-    // The renderer adapter swallows transient layout errors internally
-    // (xterm in particular can throw during rapid resizes while the
-    // DOM is still settling), so we don't need a try/catch here.
-    terminal.fit();
+    try {
+      terminal.fit();
+    } catch {
+      // swallow transient layout errors during rapid resize
+    }
     sendTerminalResize();
   }
 
@@ -238,15 +233,11 @@
       // Server-side text frames are JSON control messages (ready/error/exit),
       // not terminal bytes. PTY bytes always arrive as binary frames. Route
       // control messages through handleControlMessage so they don't render as
-      // literal text in the terminal (pre-fix: `{"type":"ready"}` was
-      // visible at the top of every freshly attached terminal).
+      // literal text in the terminal.
       if (handleControlMessage(payload)) {
         return;
       }
-      // Fallback for text frames that aren't control messages: encode to
-      // bytes so it matches the renderer adapter's Uint8Array contract.
-      // Both xterm and cloudterm accept UTF-8 bytes; result is identical
-      // to the previous string-path behavior.
+      // Fallback for text frames that aren't control messages: write as bytes.
       terminal.write(new TextEncoder().encode(payload));
       controller.recordTerminalOutput(payload);
       return;
@@ -270,7 +261,8 @@
 
     const sequence = ++reconnectSequence;
     socket?.close();
-    terminal.clear();
+    // cloudterm has no explicit clear(); ESC c (RIS full reset) does the job.
+    terminal.write(new Uint8Array([0x1b, 0x63]));
     lastResizeKey = '';
     scheduleTerminalFit();
 
@@ -322,7 +314,7 @@
       nextSocket.onerror = () => {
         if (sequence === reconnectSequence) {
           lastDisconnectReason = 'network error';
-          // Let onclose drive the reconnect policy — WebSocket always fires
+          // Let onclose drive the reconnect policy: WebSocket always fires
           // close after error. Avoid double-scheduling.
         }
       };
@@ -335,7 +327,7 @@
           controller.setTerminalStatus('disconnected', 'Terminal connection closed.');
           return;
         }
-        // Anything else — container sleep, network blip, edge eviction — is
+        // Anything else: container sleep, network blip, edge eviction, is
         // recoverable. Let the user stay in the terminal and silently rebuild
         // the socket. Status flips to 'connecting' during the attempt so the
         // loading overlay shows instead of the scary "Terminal unavailable"
@@ -355,17 +347,7 @@
   }
 
   async function initializeTerminal() {
-    // Renderer choice is read from the URL once at mount. Unknown or
-    // missing values collapse to 'xterm' so typos never break the
-    // default path. See renderers/types.ts for the full list.
-    rendererId = resolveRendererId(
-      browser ? new URLSearchParams(window.location.search).get('renderer') : null
-    );
-
-    const factory = await getRendererFactory(rendererId);
-
-    terminal = await factory({
-      host: terminalElement!,
+    terminal = await mountCloudterm(terminalElement!, {
       onData: (bytes: Uint8Array) => {
         if (socket?.readyState === WebSocket.OPEN) {
           socket.send(bytes);
@@ -379,10 +361,18 @@
       },
       onResize: () => {
         // Dedup + wire-through is handled in sendTerminalResize; it
-        // reads cols/rows from the adapter directly so we don't pass
+        // reads cols/rows from the terminal directly so we don't pass
         // them in here.
         sendTerminalResize();
       },
+      theme: {
+        background: TERMINAL_BACKGROUND,
+        foreground: '#f2efe8',
+        cursor: '#f7f4ed',
+        fontFamily: '"IBM Plex Mono", "SFMono-Regular", ui-monospace, monospace',
+        fontSize: 13,
+      },
+      maxScrollback: 10_000,
     });
 
     scheduleTerminalFit();
@@ -400,14 +390,14 @@
     //   - the WebSocket is still OPEN: just re-fit (existing behavior)
     //   - the WebSocket has CLOSED while we weren't looking: kick off a
     //     reconnect immediately instead of waiting for a keypress.
-    // This is the "1006 on stale tab" fix — user doesn't need to reload.
+    // This is the "1006 on stale tab" fix: user doesn't need to reload.
     const onVisibilityOrFocus = () => {
       scheduleTerminalFit();
       if (document.visibilityState !== 'visible') return;
       const state = socket?.readyState;
       if (state === WebSocket.OPEN) return;
       if (state === WebSocket.CONNECTING) return;
-      // CLOSED, CLOSING, or no socket — reconnect. Reset budget so a fresh
+      // CLOSED, CLOSING, or no socket: reconnect. Reset budget so a fresh
       // return to the tab gets the full retry allowance.
       resetReconnectBudget();
       void reconnectTerminal();
@@ -476,15 +466,6 @@
       bind:this={terminalElement}
       class="absolute inset-0 min-h-0 min-w-0 overflow-hidden"
     ></div>
-
-    {#if rendererId !== 'xterm'}
-      <div
-        class="bg-card text-muted-foreground pointer-events-none absolute right-2 top-2 z-20 rounded-md border px-2 py-0.5 font-mono text-xs shadow-none"
-        aria-hidden="true"
-      >
-        renderer: {rendererId}
-      </div>
-    {/if}
 
     {#if controller.terminalStatus !== 'connected'}
       {#if controller.terminalStatus === 'connecting'}
