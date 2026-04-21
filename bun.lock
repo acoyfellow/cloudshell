@@ -10,7 +10,7 @@
         "agents": "^0.11.4",
         "alchemy": "^0.91.2",
         "better-auth": "1.6.5",
-        "cloudterm": "github:acoyfellow/cloudterm#v0.0.6",
+        "cloudterm": "github:acoyfellow/cloudterm#v0.0.7",
         "drizzle-orm": "0.45.2",
         "effect": "3.21.1",
         "hono": "4.12.14",
@@ -676,7 +676,7 @@
 
     "cliui": ["cliui@9.0.1", "", { "dependencies": { "string-width": "^7.2.0", "strip-ansi": "^7.1.0", "wrap-ansi": "^9.0.0" } }, "sha512-k7ndgKhwoQveBL+/1tqGJYNz097I7WOvwbmmU2AR5+magtbjPWQTS1C5vzGkBC8Ym8UWRzfKUzUUqFLypY4Q+w=="],
 
-    "cloudterm": ["cloudterm@github:acoyfellow/cloudterm#81ae609", { "dependencies": { "@chenglou/pretext": "^0.0.5" } }, "acoyfellow-cloudterm-81ae609", "sha512-uRZxMsIU2QeDD/3cPjKazncOCqWVwP9slaH06b5pmp8ShitQ6NzUDwx8uX4Mn6A5W7OXyciyfsVDIEDcHKhHUA=="],
+    "cloudterm": ["cloudterm@github:acoyfellow/cloudterm#270b418", { "dependencies": { "@chenglou/pretext": "^0.0.5" } }, "acoyfellow-cloudterm-270b418", "sha512-MdqKtFLzoFU2u1e7NErqNatGiUWAXaSx+Byyv5PisoBS4VYsMzUGhVTMdfXBpki+nvZshpue0CCyqAfc/jqMTQ=="],
 
     "clsx": ["clsx@2.1.1", "", {}, "sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA=="],
 
