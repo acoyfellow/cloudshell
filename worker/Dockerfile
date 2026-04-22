@@ -10,9 +10,14 @@ RUN go mod download github.com/creack/pty github.com/gorilla/websocket
 COPY worker/container/main.go ./
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /server
 
-FROM alpine:3.20
+# Runtime image: debian slim, glibc-based. Alpine's musl libc breaks
+# dynamically-linked prebuilt binaries (notably opencode, which is a
+# Bun-compiled single file expecting /lib64/ld-linux-x86-64.so.2).
+# gcompat is a shim but fails to execute Bun compile-mode binaries
+# correctly on Alpine.
+FROM debian:13-slim
 
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     curl \
     wget \
@@ -25,17 +30,20 @@ RUN apk add --no-cache \
     nodejs \
     npm \
     python3 \
-    py3-pip \
+    python3-pip \
     make \
     gcc \
     g++ \
-    libc-dev \
-    linux-headers \
+    libc6-dev \
+    linux-libc-dev \
     tmux \
-    fuse \
     fuse3 \
     ca-certificates \
-    util-linux
+    util-linux \
+    procps \
+    unzip \
+    xz-utils \
+ && rm -rf /var/lib/apt/lists/*
 
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then ARCH="amd64"; \
@@ -48,7 +56,30 @@ RUN ARCH=$(uname -m) && \
 
 RUN git config --global init.defaultBranch main
 
-RUN adduser -D -s /bin/bash user
+RUN useradd -m -s /bin/bash user
+
+# opencode: pre-baked so every cold start has it without a 50 MB download.
+# The Linux release is a Bun-compiled single-file binary (~143 MB). It is
+# dynamically linked against glibc, which is why this image is Debian
+# (Alpine's musl would require gcompat, and Bun's compile-mode entrypoint
+# detection is broken under gcompat).
+#
+# Binary lives at /usr/local/bin/opencode so it survives container restarts
+# and is on PATH for every user. User runs `opencode auth login
+# https://opencode.cloudflare.dev` once to authenticate; the token lands
+# at ~/.local/share/opencode/auth.json and persists only while the
+# container is running (FUSE-backed persistence is disabled post-GA).
+ARG OPENCODE_VERSION=v1.14.19
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then OC_ARCH="x64"; \
+    elif [ "$ARCH" = "aarch64" ]; then OC_ARCH="arm64"; \
+    else echo "unsupported arch: $ARCH" && exit 1; fi && \
+    curl -fsSL -o /tmp/oc.tar.gz \
+      "https://github.com/anomalyco/opencode/releases/download/${OPENCODE_VERSION}/opencode-linux-${OC_ARCH}.tar.gz" && \
+    tar -xzf /tmp/oc.tar.gz -C /usr/local/bin/ && \
+    chmod +x /usr/local/bin/opencode && \
+    rm /tmp/oc.tar.gz && \
+    /usr/local/bin/opencode --version
 
 COPY --from=build /server /server
 
