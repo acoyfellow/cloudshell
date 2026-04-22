@@ -81,6 +81,19 @@ RUN ARCH=$(uname -m) && \
     rm /tmp/oc.tar.gz && \
     /usr/local/bin/opencode --version
 
+# cloudflared: opencode's `auth login` against an Access-protected provider
+# (opencode.cloudflare.dev in our case) shells out to `cloudflared access
+# login`. Without it, auth fails with "Executable not found: cloudflared".
+# Official debian package from pkg.cloudflare.com.
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then CF_ARCH="amd64"; \
+    elif [ "$ARCH" = "aarch64" ]; then CF_ARCH="arm64"; \
+    else echo "unsupported arch: $ARCH" && exit 1; fi && \
+    curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${CF_ARCH}" \
+      -o /usr/local/bin/cloudflared && \
+    chmod +x /usr/local/bin/cloudflared && \
+    /usr/local/bin/cloudflared --version
+
 COPY --from=build /server /server
 
 # Keep /home/user empty so tigrisfs can mount R2 here. Seed tmux config from startup after mount.
