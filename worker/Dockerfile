@@ -57,6 +57,13 @@ RUN mkdir -p /opt/cloudshell /home/user
 COPY worker/.tmux.conf /opt/cloudshell/.tmux.conf
 RUN chown user:user /opt/cloudshell/.tmux.conf /home/user
 
+# opencode pre-installed. User runs `opencode auth login` once on first
+# use to authenticate to opencode.cloudflare.dev via Cloudflare Access,
+# which routes model calls through Cloudflare's AI Gateway. The token
+# lands at ~/.local/share/opencode/auth.json and persists across
+# container restarts because /home/user is mounted from R2 via tigrisfs.
+RUN npm install -g opencode-ai@1.14.20
+
 # cloudshell `mcp` CLI — zero-dep node script. Pre-installed so the
 # user doesn't pay a 5-minute `npm install -g` on first use. See
 # worker/container/mcp-cli.mjs for the source; the CLI reads a bridge
