@@ -6,6 +6,9 @@ type ChatRequest = {
   model?: string;
   messages?: ChatMessage[];
   max_tokens?: number;
+  gatewayId?: string;
+  collectLog?: boolean;
+  metadata?: Record<string, string | number | boolean | null>;
 };
 
 function normalizeMessages(value: unknown): ChatMessage[] {
@@ -62,6 +65,29 @@ function json(data: unknown, init?: ResponseInit): Response {
   });
 }
 
+function normalizeGatewayId(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(trimmed)) return null;
+  return trimmed;
+}
+
+function normalizeMetadata(value: unknown): Record<string, string | number | boolean | null> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  const metadata: Record<string, string | number | boolean | null> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (!/^[a-zA-Z0-9_.:-]{1,64}$/.test(key)) continue;
+    if (raw === null || typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean') {
+      metadata[key] = raw;
+    }
+  }
+  return metadata;
+}
+
 export async function handleAiGatewayUpstreamProof20260426(
   request: Request,
   env: Env
@@ -81,14 +107,39 @@ export async function handleAiGatewayUpstreamProof20260426(
     : '@cf/meta/llama-3.1-8b-instruct';
   const messages = normalizeMessages(body.messages);
   const maxTokens = Math.min(Math.max(Math.trunc(Number(body.max_tokens ?? 64)), 1), 1024);
+  const gatewayId = normalizeGatewayId(body.gatewayId);
+  const metadata = {
+    experiment: 'ai-gateway-upstream-proof-20260426',
+    userId,
+    ...normalizeMetadata(body.metadata),
+  };
   const started = Date.now();
 
   try {
-    const result = await env.AI.run(model as never, {
-      messages: messages as never,
-      max_tokens: maxTokens,
-    } as never);
-    const content = extractText(result);
+    const result = gatewayId
+      ? await env.AI.gateway(gatewayId).run({
+          provider: 'workers-ai',
+          endpoint: model,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          query: {
+            messages,
+            max_tokens: maxTokens,
+          },
+        } as never, {
+          gateway: {
+            collectLog: body.collectLog !== false,
+            metadata,
+          },
+        } as never)
+      : await env.AI.run(model as never, {
+          messages: messages as never,
+          max_tokens: maxTokens,
+        } as never);
+
+    const raw = result instanceof Response ? await result.clone().json().catch(() => null) : result;
+    const content = extractText(raw ?? result);
 
     return json({
       id: `chatcmpl_cloudshell_exp_${Date.now()}`,
@@ -99,10 +150,12 @@ export async function handleAiGatewayUpstreamProof20260426(
       usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
       experiment: {
         name: 'ai-gateway-upstream-proof-20260426',
-        upstream: 'workers-ai-binding',
+        upstream: gatewayId ? 'ai-gateway-workers-ai' : 'workers-ai-binding',
+        gatewayId: gatewayId ? 'set' : null,
         durationMs: Date.now() - started,
+        aiGatewayLogId: env.AI.aiGatewayLogId ?? null,
       },
-      raw: result,
+      raw,
     });
   } catch (error) {
     return json({
@@ -110,8 +163,10 @@ export async function handleAiGatewayUpstreamProof20260426(
       name: error instanceof Error ? error.name : undefined,
       experiment: {
         name: 'ai-gateway-upstream-proof-20260426',
-        upstream: 'workers-ai-binding',
+        upstream: gatewayId ? 'ai-gateway-workers-ai' : 'workers-ai-binding',
+        gatewayId: gatewayId ? 'set' : null,
         durationMs: Date.now() - started,
+        aiGatewayLogId: env.AI.aiGatewayLogId ?? null,
       },
     }, { status: 500 });
   }
