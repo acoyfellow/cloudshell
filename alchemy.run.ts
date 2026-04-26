@@ -6,6 +6,7 @@ import {
   DurableObjectNamespace,
   KVNamespace,
   R2Bucket,
+  Ai,
   SvelteKit,
   Worker,
 } from 'alchemy/cloudflare';
@@ -40,6 +41,8 @@ const USER_DATA = await R2Bucket(`${projectName}-user-data`, {
   name: `${projectName}-user-data`,
   adopt: true,
 });
+
+const AI = Ai();
 
 const Sandbox = await Container('sandbox', {
   className: 'CloudShellTerminal',
@@ -94,6 +97,7 @@ export const WORKER = await Worker(workerName, {
     UserAgent,
     USERS_KV,
     USER_DATA,
+    AI,
     TERMINAL_TICKET_SECRET: deployEnv.terminalSecret,
     AWS_ACCESS_KEY_ID: deployEnv.awsAccessKeyId,
     AWS_SECRET_ACCESS_KEY: deployEnv.awsSecretAccessKey,

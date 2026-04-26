@@ -35,6 +35,8 @@ export interface Env {
   UserAgent: DurableObjectNamespace;
   USERS_KV: KVNamespace;
   USER_DATA: R2Bucket;
+  /** Workers AI binding used by the isolated AI Gateway upstream proof route. */
+  AI?: Ai;
 }
 
 export interface Tab {

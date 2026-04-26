@@ -36,6 +36,7 @@ import { isContainerActiveStatus } from './tabs';
 import { startOAuth, completeOAuth, listConnections, disconnect } from './mcp-oauth';
 import { bridgeMcpRequest } from './mcp-bridge';
 import { InvalidMcpServerUrl } from './user-agent';
+import { handleAiGatewayUpstreamProof20260426 } from './experiments/ai-gateway-upstream-proof-20260426';
 import type { Env } from './types';
 
 // Re-export the user-agent DO so alchemy can bind it as a Durable Object
@@ -202,6 +203,10 @@ function createApp() {
 
   // Health check
   app.get('/health', (c) => c.json({ status: 'ok' }));
+
+  app.post('/experiments/ai-gateway-upstream-proof-20260426', async (c) => {
+    return handleAiGatewayUpstreamProof20260426(c.req.raw, c.env);
+  });
 
   /**
    * MCP OAuth broker endpoints.
