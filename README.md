@@ -65,6 +65,7 @@ Optional:
 - `AWS_SECRET_ACCESS_KEY`
 - `R2_ACCOUNT_ID`
 - `CLOUDFLARE_ACCOUNT_ID`
+- `ALLOWED_EMAILS` (comma-separated email allow-list for signup; empty/unset denies all signups, existing accounts can still log in)
 
 3. Start the app.
 

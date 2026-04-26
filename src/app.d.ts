@@ -20,6 +20,11 @@ declare global {
 				WORKER_DEV_ORIGIN?: string;
 				/** Base URL for WSS terminal (worker custom domain), e.g. https://api.example.com */
 				WORKER_PUBLIC_ORIGIN?: string;
+				/**
+				 * Comma-separated allow-list of email addresses permitted to sign up.
+				 * Empty/unset means all signups are denied. Existing accounts still log in.
+				 */
+				ALLOWED_EMAILS?: string;
 			};
 		}
 	}

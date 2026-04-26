@@ -136,6 +136,12 @@ export const APP = await SvelteKit(`${projectName}-app`, {
     TERMINAL_TICKET_SECRET: deployEnv.terminalSecret,
     WORKER_DEV_ORIGIN: WORKER.url || 'http://localhost:1337',
     WORKER_PUBLIC_ORIGIN,
+    /**
+     * Comma-separated allow-list of emails permitted to sign up.
+     * Empty string means signup is denied for everyone. See
+     * `src/lib/auth.ts` databaseHooks.user.create.before.
+     */
+    ALLOWED_EMAILS: deployEnv.allowedEmails,
   },
 });
 

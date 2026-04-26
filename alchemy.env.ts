@@ -14,6 +14,13 @@ const raw = z
     CI: z.string().optional(),
     /** If set, deploys minimal Node `ws` parity container + guarded `/terminal` on the API worker. */
     TERMINAL_PARITY_SECRET: z.string().optional(),
+    /**
+     * Comma-separated allow-list of email addresses permitted to sign up.
+     * If empty/unset, signup is denied for everyone (existing accounts can
+     * still log in). This is the application-level access gate; see
+     * `src/lib/auth.ts` databaseHooks.user.create.before.
+     */
+    ALLOWED_EMAILS: z.string().optional(),
   })
   .parse(process.env);
 
@@ -43,4 +50,5 @@ export const deployEnv = {
   awsAccessKeyId: raw.AWS_ACCESS_KEY_ID ?? '',
   awsSecretAccessKey: raw.AWS_SECRET_ACCESS_KEY ?? '',
   terminalParitySecret: raw.TERMINAL_PARITY_SECRET?.trim() || undefined,
+  allowedEmails: raw.ALLOWED_EMAILS?.trim() ?? '',
 };
