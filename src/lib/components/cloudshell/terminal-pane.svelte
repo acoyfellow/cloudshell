@@ -2,11 +2,23 @@
   import { browser } from '$app/environment';
   import { onMount } from 'svelte';
   import AlertCircle from '@lucide/svelte/icons/alert-circle';
-  import 'cloudterm/style.css';
-  import { mount as mountCloudterm } from 'cloudterm';
-  import type { Terminal as CloudtermTerminal } from 'cloudterm';
+  import '@xterm/xterm/css/xterm.css';
+  import { Terminal as XTerm } from '@xterm/xterm';
+  import { FitAddon } from '@xterm/addon-fit';
   import type { WorkspaceController } from '$lib/cloudshell/workspace-controller.svelte';
   import LoadingPane from './loading-pane.svelte';
+
+  // Why xterm.js instead of cloudterm:
+  //   We previously used cloudterm (a custom DOM-rendered terminal emulator),
+  //   but its ANSI parser was missing several VT-protocol pieces tmux/vim/htop
+  //   require: charset designation (ESC ( B leaked the trailing 'B' as text),
+  //   DA1/DA2/XTVERSION/DSR query replies (apps blocked waiting for replies),
+  //   and DEC scroll regions / wide-char widths / OSC 10/11 color queries.
+  //   Building those out correctly is a long-tail surface area; xterm.js (used
+  //   by VS Code, Hyper, Theia, Codespaces, Replit, Codecademy) already
+  //   handles all of it. The differentiators we built cloudterm for
+  //   (DOM-rendering, speculative local echo) are also xterm.js features.
+  //   See cloudterm git stash@{0} for the parking-lot of partial fixes.
 
   let {
     controller,
@@ -22,7 +34,8 @@
 
   let terminalElement = $state<HTMLDivElement | null>(null);
   let socket: WebSocket | null = null;
-  let terminal: CloudtermTerminal | null = null;
+  let terminal: XTerm | null = null;
+  let fitAddon: FitAddon | null = null;
   let resizeObserver: ResizeObserver | null = null;
   let disposeResize: (() => void) | null = null;
   let reconnectSequence = 0;
@@ -172,7 +185,7 @@
   }
 
   function runTerminalFit() {
-    if (!browser || !terminal || !terminalElement) {
+    if (!browser || !terminal || !fitAddon || !terminalElement) {
       return;
     }
 
@@ -182,7 +195,7 @@
     }
 
     try {
-      terminal.fit();
+      fitAddon.fit();
     } catch {
       // swallow transient layout errors during rapid resize
     }
@@ -237,8 +250,9 @@
       if (handleControlMessage(payload)) {
         return;
       }
-      // Fallback for text frames that aren't control messages: write as bytes.
-      terminal.write(payloadEncoder.encode(payload));
+      // Fallback for text frames that aren't control messages. xterm.js's
+      // write() accepts strings directly so we no longer need to re-encode.
+      terminal.write(payload);
       if (controller.isRecording) controller.recordTerminalOutput(payload);
       return;
     }
@@ -259,7 +273,11 @@
     }
   }
 
-  const payloadEncoder = new TextEncoder();
+  // Decoder kept for the recording path only: cloudshell's recording stores
+  // terminal output as strings for replay (asciinema-style), and binary
+  // PTY frames need to be decoded once at recording time. xterm.js itself
+  // handles UTF-8 internally for rendering — this decoder is purely for
+  // the recording sink.
   const payloadDecoder = new TextDecoder();
 
   async function reconnectTerminal() {
@@ -269,8 +287,12 @@
 
     const sequence = ++reconnectSequence;
     socket?.close();
-    // cloudterm has no explicit clear(); ESC c (RIS full reset) does the job.
-    terminal.write(new Uint8Array([0x1b, 0x63]));
+    // Clear the terminal grid before the new socket attaches. xterm.js's
+    // reset() does the same job as RIS (ESC c) cloudterm used: clears the
+    // buffer, drops scroll regions, restores attributes, and parks the
+    // cursor at home. Important on reconnect because the previous container
+    // session's scrollback should not bleed into the new one.
+    terminal.reset();
     lastResizeKey = '';
     scheduleTerminalFit();
 
@@ -355,37 +377,72 @@
   }
 
   async function initializeTerminal() {
-    const keyDecoder = new TextDecoder();
-    terminal = await mountCloudterm(terminalElement!, {
-      onData: (bytes: Uint8Array) => {
-        if (socket?.readyState === WebSocket.OPEN) {
-          socket.send(bytes);
-        }
-        // Decode only when actually recording, not on every keystroke. The
-        // decoder itself is cheap but the string allocation + Array.push
-        // shows up in keypress latency traces on sustained typing.
-        if (controller.isRecording) {
-          try {
-            controller.recordTerminalOutput(keyDecoder.decode(bytes));
-          } catch {
-            // decoding should never fail on keyboard input; ignore.
-          }
-        }
-      },
-      onResize: () => {
-        // Dedup + wire-through is handled in sendTerminalResize; it
-        // reads cols/rows from the terminal directly so we don't pass
-        // them in here.
-        sendTerminalResize();
-      },
+    // Wait one frame so the host element has layout. xterm.js's measurement
+    // depends on the DOM being in the page; opening it before the rect is
+    // valid produces a 1x1 grid that thrashes on the first fit.
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+
+    terminal = new XTerm({
+      // Theme matches the cloudterm-era look so the visual change is invisible.
+      // Foreground/background/cursor were the same hex codes as before.
       theme: {
         background: TERMINAL_BACKGROUND,
         foreground: '#f2efe8',
         cursor: '#f7f4ed',
-        fontFamily: '"IBM Plex Mono", "SFMono-Regular", ui-monospace, monospace',
-        fontSize: 13,
       },
-      maxScrollback: 10_000,
+      fontFamily: '"IBM Plex Mono", "SFMono-Regular", ui-monospace, monospace',
+      fontSize: 13,
+      // Match the previous scrollback budget. xterm caps at 10k lines per buffer.
+      scrollback: 10_000,
+      // cursorBlink: tmux/vim/etc. drive the cursor visibility themselves
+      // via DECTCEM; xterm respects that out of the box. Leaving blink on
+      // for shells that don't hide the cursor.
+      cursorBlink: true,
+      // Disable xterm's default selection-on-alt-click behavior. With CMD-A
+      // and the existing keyboard-shortcut layer that wraps this component,
+      // alt-click cursor positioning is more confusing than helpful.
+      altClickMovesCursor: false,
+      // No bell config: xterm.js v6 removed `bellStyle` from public options.
+      // The default behavior emits an `onBell` event with no audio. cloudterm
+      // was silent on bell; we get the same effective behavior by not
+      // subscribing to onBell (no audible cue, no flash). If we ever want a
+      // visual bell, hook `terminal.onBell` and animate the host element.
+    });
+
+    fitAddon = new FitAddon();
+    terminal.loadAddon(fitAddon);
+
+    terminal.open(terminalElement!);
+
+    // Wire keystrokes from the terminal back to the WebSocket. xterm emits
+    // strings (already encoded for the tty) via `onData`. Cloudterm gave us
+    // Uint8Array; we convert to keep the wire format identical (binary
+    // frames upstream, server-side Go reads bytes from PTY).
+    const keyEncoder = new TextEncoder();
+    terminal.onData((data) => {
+      if (socket?.readyState === WebSocket.OPEN) {
+        // PTY expects raw bytes; binary frame keeps it byte-identical to
+        // the cloudterm path. Server's Go server reads ws.BinaryMessage.
+        socket.send(keyEncoder.encode(data));
+      }
+      // Recording was per-keystroke string in the cloudterm version; xterm
+      // already gives us a string so no decoding cost on the hot path.
+      if (controller.isRecording) {
+        controller.recordTerminalOutput(data);
+      }
+    });
+
+    // Window-title (OSC 0/1/2). We don't surface this in the UI today, but
+    // wire it so the controller can subscribe later without another swap.
+    terminal.onTitleChange(() => {
+      // intentionally empty: future hook for tab/title sync
+    });
+
+    terminal.onResize(() => {
+      // Dedup + wire-through is handled in sendTerminalResize; it
+      // reads cols/rows from the terminal directly so we don't pass
+      // them in here.
+      sendTerminalResize();
     });
 
     scheduleTerminalFit();
@@ -458,7 +515,11 @@
     return () => {
       cancelScheduledReconnect();
       socket?.close();
-      terminal?.destroy();
+      // xterm.js: dispose() tears down the DOM and detaches all handlers.
+      // Equivalent to cloudterm's destroy().
+      terminal?.dispose();
+      terminal = null;
+      fitAddon = null;
       if (fitTimeout !== null) {
         window.clearTimeout(fitTimeout);
       }

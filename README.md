@@ -104,7 +104,7 @@ bun run db:remote
 - Better Auth uses D1 for user and auth records.
 - Runtime metadata stays in KV/R2, not D1.
 - Terminal access uses app-origin websocket routing in production and a signed direct-worker ticket in local dev.
-- `@xterm/xterm` and `@xterm/addon-fit` are bundled from npm. There is no CDN-loaded terminal dependency.
+- `@xterm/xterm` and `@xterm/addon-fit` are bundled from npm. There is no CDN-loaded terminal dependency. We previously used a custom emulator (`cloudterm`) but swapped to xterm.js because reproducing every VT-protocol corner (DA1/DA2/XTVERSION query replies, charset designation, scroll regions, wide-char widths) is a long-tail surface area best left to the canonical implementation.
 
 ### Terminal handshake contract
 
