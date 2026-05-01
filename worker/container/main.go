@@ -58,6 +58,7 @@ type BridgeTicketMessage struct {
 	Type      string `json:"type"`
 	Ticket    string `json:"ticket"`
 	ExpiresAt int64  `json:"expiresAt"`
+	BridgeUrl string `json:"bridgeUrl,omitempty"`
 }
 
 type SessionState struct {
