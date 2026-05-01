@@ -112,7 +112,11 @@
       };
       if (!ticket) return;
       if (ws.readyState !== WebSocket.OPEN) return;
-      ws.send(JSON.stringify({ type: 'bridge_ticket', ticket, expiresAt, bridgeUrl: window.location.origin }));
+      const bridgeUrl =
+        window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+          ? `${window.location.protocol}//host.docker.internal:${window.location.port || (window.location.protocol === 'https:' ? '443' : '80')}`
+          : window.location.origin;
+      ws.send(JSON.stringify({ type: 'bridge_ticket', ticket, expiresAt, bridgeUrl }));
     } catch {
       // Non-fatal: terminal works without MCP bridge.
     }
