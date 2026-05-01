@@ -21,6 +21,7 @@
  */
 
 import { error, json, type RequestEvent } from '@sveltejs/kit';
+import { dev } from '$app/environment';
 import { verifyBridgeTicket } from '$lib/server/mcp-bridge-auth';
 import type { RequestHandler } from './$types';
 
@@ -33,7 +34,7 @@ async function forward(event: RequestEvent, method: 'GET' | 'DELETE') {
   const identity = await verifyBridgeTicket(event);
 
   const worker = event.platform?.env?.WORKER;
-  const isDev = !worker;
+  const isDev = dev;
   const base = isDev ? 'http://localhost:1338' : 'http://worker';
   const workerUrl = new URL('/mcp/connections', base);
   workerUrl.search = event.url.search;
