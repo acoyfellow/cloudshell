@@ -469,7 +469,18 @@ export class CloudshellUserAgent extends Agent<Env> {
       // no concurrent flow this can trample.
       await provider.deleteCodeVerifier();
     }
-    const outcome = await auth(provider, { serverUrl: params.serverUrl });
+    let outcome: unknown;
+    try {
+      outcome = await auth(provider, { serverUrl: params.serverUrl });
+    } catch (err) {
+      console.error('[mcp] auth() threw during start', {
+        serverUrl: params.serverUrl,
+        message: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : undefined,
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+      throw err;
+    }
     if (outcome === 'AUTHORIZED') {
       return { status: 'already_connected' };
     }
