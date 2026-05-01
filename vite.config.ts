@@ -8,6 +8,7 @@ export default defineConfig({
     noExternal: ['@lucide/svelte', 'svelte-sonner']
   },
   server: {
+    allowedHosts: ['host.docker.internal'],
     watch: {
       ignored: ['**/.alchemy/**']
     }
