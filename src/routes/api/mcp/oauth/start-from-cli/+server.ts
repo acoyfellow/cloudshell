@@ -23,6 +23,7 @@
  */
 
 import { error, json } from '@sveltejs/kit';
+import { dev } from '$app/environment';
 import { verifyBridgeTicket } from '$lib/server/mcp-bridge-auth';
 import type { RequestHandler } from './$types';
 
@@ -43,10 +44,11 @@ export const POST: RequestHandler = async (event) => {
   ).toString();
 
   const worker = event.platform?.env?.WORKER;
-  const isDev = !worker;
-  const workerUrl = isDev
-    ? new URL('/mcp/oauth/start', 'http://localhost:1338').toString()
-    : new URL('/mcp/oauth/start', 'http://worker').toString();
+  const isDev = dev;
+  const workerBase = isDev
+    ? event.platform?.env?.WORKER_DEV_ORIGIN || process.env.WORKER_DEV_ORIGIN || 'http://localhost:1338'
+    : 'http://worker';
+  const workerUrl = new URL('/mcp/oauth/start', workerBase).toString();
 
   const upstreamHeaders = new Headers();
   upstreamHeaders.set('content-type', 'application/json');
@@ -55,13 +57,20 @@ export const POST: RequestHandler = async (event) => {
     upstreamHeaders.set('X-User-Email', identity.userEmail);
   }
 
-  const upstream = new Request(workerUrl, {
-    method: 'POST',
-    headers: upstreamHeaders,
-    body: JSON.stringify({ serverUrl, redirectUrl }),
-  });
-
-  const response = isDev ? await fetch(upstream) : await worker!.fetch(upstream);
+  const bodyText = JSON.stringify({ serverUrl, redirectUrl });
+  const response = isDev
+    ? await fetch(workerUrl, {
+        method: 'POST',
+        headers: upstreamHeaders,
+        body: bodyText,
+      })
+    : await worker!.fetch(
+        new Request(workerUrl, {
+          method: 'POST',
+          headers: upstreamHeaders,
+          body: bodyText,
+        })
+      );
   if (!response.ok) {
     throw error(
       response.status,
