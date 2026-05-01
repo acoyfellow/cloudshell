@@ -138,7 +138,7 @@ export const APP = await SvelteKit(`${projectName}-app`, {
     BETTER_AUTH_URL: deployEnv.betterAuthUrl,
     BETTER_AUTH_TRUSTED_ORIGINS: ['http://localhost:5173', deployEnv.betterAuthUrl].join(','),
     TERMINAL_TICKET_SECRET: deployEnv.terminalSecret,
-    WORKER_DEV_ORIGIN: WORKER.url || 'http://localhost:1337',
+    WORKER_DEV_ORIGIN: WORKER.url || 'http://localhost:1338',
     WORKER_PUBLIC_ORIGIN,
     /**
      * Comma-separated allow-list of emails permitted to sign up.
