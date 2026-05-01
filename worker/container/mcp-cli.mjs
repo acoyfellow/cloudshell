@@ -41,6 +41,15 @@ const LOGIN_TIMEOUT_MS = 10 * 60 * 1_000; // 10 minutes
 function getBridgeUrl() {
   const explicit = process.env.CLOUDSHELL_BRIDGE_URL;
   if (explicit) return explicit.replace(/\/$/, '');
+
+  const filePath = path.join(os.homedir(), '.cloudshell', 'bridge-url');
+  try {
+    const contents = fs.readFileSync(filePath, 'utf8').trim();
+    if (contents) return contents.replace(/\/$/, '');
+  } catch {
+    // not present
+  }
+
   return DEFAULT_BRIDGE_URL;
 }
 

@@ -634,6 +634,11 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 						log.Printf("bridge_ticket mkdir error for %s: %v", username, err)
 						continue
 					}
+					if bt.BridgeUrl != "" {
+						if err := os.WriteFile(filepath.Join(dir, "bridge-url"), []byte(bt.BridgeUrl), 0600); err != nil {
+							log.Printf("failed to write bridge url: %v", err)
+						}
+					}
 					if err := os.WriteFile(filepath.Join(dir, "bridge-ticket"), []byte(bt.Ticket), 0600); err != nil {
 						log.Printf("bridge_ticket write error for %s: %v", username, err)
 						continue

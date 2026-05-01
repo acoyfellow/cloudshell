@@ -112,7 +112,7 @@
       };
       if (!ticket) return;
       if (ws.readyState !== WebSocket.OPEN) return;
-      ws.send(JSON.stringify({ type: 'bridge_ticket', ticket, expiresAt }));
+      ws.send(JSON.stringify({ type: 'bridge_ticket', ticket, expiresAt, bridgeUrl: window.location.origin }));
     } catch {
       // Non-fatal: terminal works without MCP bridge.
     }
