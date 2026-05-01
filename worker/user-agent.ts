@@ -43,6 +43,18 @@ import type { Env } from './types';
  * backwards-compatible with any already-persisted state rows.
  */
 export class CloudshellOAuthClientProvider extends DurableObjectOAuthClientProvider {
+  private readonly userId?: string;
+
+  constructor(
+    storage: DurableObjectStorage,
+    clientName: string,
+    redirectUrl: string,
+    userId?: string
+  ) {
+    super(storage, clientName, redirectUrl);
+    this.userId = userId;
+  }
+
   override async state(): Promise<string> {
     // Reuse the upstream state() to get the stored row + raw state
     // string, then rewrite the serverId portion. Cheaper than
@@ -53,7 +65,8 @@ export class CloudshellOAuthClientProvider extends DurableObjectOAuthClientProvi
     if (dot <= 0) return raw;
     const nonce = raw.slice(0, dot);
     const serverId = raw.slice(dot + 1);
-    return `${nonce}.${encodeServerId(serverId)}`;
+    const userPart = this.userId ? `.${encodeServerId(this.userId)}` : '';
+    return `${nonce}.${encodeServerId(serverId)}${userPart}`;
   }
 
   /**
@@ -74,7 +87,8 @@ export class CloudshellOAuthClientProvider extends DurableObjectOAuthClientProvi
       return { valid: false, error: 'Invalid state format' };
     }
     const nonce = state.slice(0, dot);
-    const encoded = state.slice(dot + 1);
+    const secondDot = state.indexOf('.', dot + 1);
+    const encoded = secondDot === -1 ? state.slice(dot + 1) : state.slice(dot + 1, secondDot);
     const decoded = decodeServerId(encoded);
     if (decoded == null) {
       return { valid: false, error: 'Invalid state encoding' };
@@ -242,11 +256,13 @@ export class CloudshellUserAgent extends Agent<Env> {
   provider(params: {
     readonly serverId: string;
     readonly baseRedirectUrl: string;
+    readonly userId?: string;
   }): CloudshellOAuthClientProvider {
     const provider = new CloudshellOAuthClientProvider(
       this.ctx.storage,
       CLIENT_NAME,
-      params.baseRedirectUrl
+      params.baseRedirectUrl,
+      params.userId
     );
     provider.serverId = params.serverId;
     return provider;
@@ -426,6 +442,7 @@ export class CloudshellUserAgent extends Agent<Env> {
   async runAuthStart(params: {
     readonly serverUrl: string;
     readonly baseRedirectUrl: string;
+    readonly userId?: string;
   }): Promise<{ status: 'redirect'; authorizeUrl: string } | { status: 'already_connected' }> {
     // Validate the serverUrl shape before doing any OAuth work. Without
     // this, a bad input like `mcp login cf-portal` (no scheme, no host)
@@ -435,6 +452,7 @@ export class CloudshellUserAgent extends Agent<Env> {
     const provider = this.provider({
       serverId: params.serverUrl,
       baseRedirectUrl: params.baseRedirectUrl,
+      userId: params.userId,
     });
     // A fresh provider instance has no in-memory clientId, so
     // `clientInformation()` returns undefined, so MCP SDK's auth()

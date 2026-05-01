@@ -18,10 +18,22 @@
  */
 
 import { error } from '@sveltejs/kit';
+import { dev } from '$app/environment';
 import { proxyWorkerRequest } from '$lib/server/worker';
 import type { RequestHandler } from './$types';
 
 const POPUP_CHANNEL = 'cloudshell-mcp-oauth';
+
+function parseUserIdFromState(state: string): string | null {
+  const parts = state.split('.');
+  if (parts.length < 3 || !parts[2]) return null;
+  try {
+    const padded = parts[2].replace(/-/g, '+').replace(/_/g, '/');
+    return atob(padded);
+  } catch {
+    return null;
+  }
+}
 
 interface PopupPayload {
   readonly ok: boolean;
@@ -49,15 +61,33 @@ export const GET: RequestHandler = async (event) => {
 
   const redirectUrl = new URL('/api/mcp/oauth/callback', event.url.origin).toString();
 
-  const workerRequest = new Request(event.request.url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ state, code, redirectUrl }),
-  });
-  const rewrappedEvent = { ...event, request: workerRequest } as typeof event;
-
   try {
-    const response = await proxyWorkerRequest(rewrappedEvent, '/mcp/oauth/callback');
+    let response: Response;
+    const stateUserId = parseUserIdFromState(state);
+    if (stateUserId) {
+      const worker = event.platform?.env?.WORKER;
+      const isDev = dev;
+      const workerBase = isDev
+        ? event.platform?.env?.WORKER_DEV_ORIGIN || process.env.WORKER_DEV_ORIGIN || 'http://localhost:1338'
+        : 'http://worker';
+      const workerUrl = new URL('/mcp/oauth/callback', workerBase).toString();
+      const headers = new Headers({
+        'content-type': 'application/json',
+        'X-User-Id': stateUserId,
+      });
+      const body = JSON.stringify({ state, code, redirectUrl });
+      response = isDev
+        ? await fetch(workerUrl, { method: 'POST', headers, body })
+        : await worker!.fetch(new Request(workerUrl, { method: 'POST', headers, body }));
+    } else {
+      const workerRequest = new Request(event.request.url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ state, code, redirectUrl }),
+      });
+      const rewrappedEvent = { ...event, request: workerRequest } as typeof event;
+      response = await proxyWorkerRequest(rewrappedEvent, '/mcp/oauth/callback');
+    }
     if (!response.ok) {
       const text = await response.text().catch(() => 'Worker error');
       return new Response(popupDocument({ ok: false, error: text.slice(0, 500) }), {

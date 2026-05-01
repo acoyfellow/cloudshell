@@ -80,6 +80,18 @@ export function parseServerIdFromState(state: string): string | null {
   }
 }
 
+
+export function parseUserIdFromState(state: string): string | null {
+  const parts = state.split('.');
+  if (parts.length < 3 || !parts[2]) return null;
+  try {
+    const padded = parts[2].replace(/-/g, '+').replace(/_/g, '/');
+    return atob(padded);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Public connection metadata — what the CLI sees. Token values and
  * OAuth client secrets are NEVER included; those stay in the DO's
@@ -159,6 +171,7 @@ export async function startOAuth(
   return (await (agent as any).runAuthStart({
     serverUrl: input.serverUrl,
     baseRedirectUrl: input.redirectUrl,
+    userId,
   })) as StartOAuthResult;
 }
 
