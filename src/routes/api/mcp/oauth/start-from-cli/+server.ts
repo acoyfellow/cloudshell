@@ -38,10 +38,11 @@ export const POST: RequestHandler = async (event) => {
     throw error(400, 'serverUrl is required');
   }
 
-  const redirectUrl = new URL(
-    '/api/mcp/oauth/callback',
-    event.url.origin
-  ).toString();
+  const redirectOrigin =
+    event.url.hostname === 'host.docker.internal'
+      ? 'http://localhost:5173'
+      : event.url.origin;
+  const redirectUrl = new URL('/api/mcp/oauth/callback', redirectOrigin).toString();
 
   const worker = event.platform?.env?.WORKER;
   const isDev = dev;
