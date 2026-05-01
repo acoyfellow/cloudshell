@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createApp } from './index';
 import type { Env } from './types';
 
@@ -119,6 +119,10 @@ function createEnv(): Env {
     PORT_FORWARD_BASE_DOMAIN: 'example.com',
     TERMINAL_TICKET_SECRET: 'test-secret',
     Sandbox: {} as Env['Sandbox'],
+    UserAgent: {
+      idFromName(userId: string) { return `id:${userId}`; },
+      get() { return { async getAccessTokenFor() { return 'route-token'; } }; },
+    } as unknown as Env['UserAgent'],
     USERS_KV: new MockKVNamespace(),
     USER_DATA: new MockR2Bucket() as unknown as R2Bucket,
   };
@@ -342,5 +346,111 @@ describe('worker utility and file routes', () => {
     await expect(listResponse.json()).resolves.toEqual({
       ports: [expect.objectContaining({ port: 3000 })],
     });
+  });
+});
+
+
+describe('worker MCP bridge route', () => {
+  it('requires forwarded user identity', async () => {
+    const app = createApp();
+    const env = createEnv();
+    const response = await app.request(
+      'https://example.com/mcp/bridge/mcp?server=https://mcp.example.test',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Bridge-Redirect-Url': 'https://cloudshell.local/api/mcp/oauth/callback',
+        },
+        body: '{}',
+      },
+      env
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({ error: 'X-User-Id required' });
+  });
+
+  it('requires server query param', async () => {
+    const app = createApp();
+    const env = createEnv();
+    const response = await app.request(
+      'https://example.com/mcp/bridge/mcp',
+      {
+        method: 'POST',
+        headers: authHeaders({
+          'Content-Type': 'application/json',
+          'X-Bridge-Redirect-Url': 'https://cloudshell.local/api/mcp/oauth/callback',
+        }),
+        body: '{}',
+      },
+      env
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: 'server query param required' });
+  });
+
+  it('requires bridge redirect header', async () => {
+    const app = createApp();
+    const env = createEnv();
+    const response = await app.request(
+      'https://example.com/mcp/bridge/mcp?server=https://mcp.example.test',
+      {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: '{}',
+      },
+      env
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: 'X-Bridge-Redirect-Url header required' });
+  });
+
+  it('forwards through the bridge route with server-side bearer and stripped internals', async () => {
+    const app = createApp();
+    const env = createEnv();
+    const calls: Array<{ url: string; init: RequestInit; body: string }> = [];
+    vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+      calls.push({ url, init, body: new TextDecoder().decode(init.body as ArrayBuffer) });
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 'route', result: { ok: true } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    try {
+      const response = await app.request(
+        'https://example.com/mcp/bridge/mcp?server=https://mcp.example.test',
+        {
+          method: 'POST',
+          headers: authHeaders({
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            'X-Bridge-Redirect-Url': 'https://cloudshell.local/api/mcp/oauth/callback',
+            'X-Cloudshell-Ticket': 'runtime-ticket',
+            Cookie: 'session=secret',
+            'CF-Ray': 'abc',
+          }),
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+        },
+        env
+      );
+
+      expect(response.status).toBe(200);
+      expect(calls).toHaveLength(1);
+      expect(calls[0].url).toBe('https://mcp.example.test/mcp');
+      expect(calls[0].body).toContain('tools/list');
+      const headers = calls[0].init.headers as Headers;
+      expect(headers.get('authorization')).toBe('Bearer route-token');
+      expect(headers.get('x-cloudshell-ticket')).toBeNull();
+      expect(headers.get('x-user-id')).toBeNull();
+      expect(headers.get('x-user-email')).toBeNull();
+      expect(headers.get('cookie')).toBeNull();
+      expect(headers.get('cf-ray')).toBeNull();
+      await expect(response.json()).resolves.toMatchObject({ result: { ok: true } });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
