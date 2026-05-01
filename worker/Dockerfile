@@ -1,10 +1,14 @@
 # syntax=docker/dockerfile:1
 
-FROM golang:1.24-alpine AS build
+FROM golang:1.24-bookworm AS build
 
 WORKDIR /app
 
 COPY worker/container/go.mod ./
+# Local Colima + corporate TLS can break Go's module proxy verification inside
+# Docker. Direct mode keeps local dev unblocked without weakening the runtime
+# image; this builder stage is discarded.
+ENV GOPROXY=direct GOSUMDB=off
 RUN go mod download github.com/creack/pty github.com/gorilla/websocket
 
 COPY worker/container/main.go ./

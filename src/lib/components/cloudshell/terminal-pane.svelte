@@ -3,8 +3,8 @@
   import { onMount } from 'svelte';
   import AlertCircle from '@lucide/svelte/icons/alert-circle';
   import '@xterm/xterm/css/xterm.css';
-  import { Terminal as XTerm } from '@xterm/xterm';
-  import { FitAddon } from '@xterm/addon-fit';
+  import type { Terminal as XTermType } from '@xterm/xterm';
+  import type { FitAddon as FitAddonType } from '@xterm/addon-fit';
   import type { WorkspaceController } from '$lib/cloudshell/workspace-controller.svelte';
   import LoadingPane from './loading-pane.svelte';
 
@@ -34,8 +34,8 @@
 
   let terminalElement = $state<HTMLDivElement | null>(null);
   let socket: WebSocket | null = null;
-  let terminal: XTerm | null = null;
-  let fitAddon: FitAddon | null = null;
+  let terminal: XTermType | null = null;
+  let fitAddon: FitAddonType | null = null;
   let resizeObserver: ResizeObserver | null = null;
   let disposeResize: (() => void) | null = null;
   let reconnectSequence = 0;
@@ -382,6 +382,11 @@
     // valid produces a 1x1 grid that thrashes on the first fit.
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
 
+    const [{ Terminal: XTerm }, { FitAddon }] = await Promise.all([
+      import('@xterm/xterm'),
+      import('@xterm/addon-fit'),
+    ]);
+
     terminal = new XTerm({
       // Theme matches the cloudterm-era look so the visual change is invisible.
       // Foreground/background/cursor were the same hex codes as before.
@@ -419,7 +424,7 @@
     // Uint8Array; we convert to keep the wire format identical (binary
     // frames upstream, server-side Go reads bytes from PTY).
     const keyEncoder = new TextEncoder();
-    terminal.onData((data) => {
+    terminal.onData((data: string) => {
       if (socket?.readyState === WebSocket.OPEN) {
         // PTY expects raw bytes; binary frame keeps it byte-identical to
         // the cloudterm path. Server's Go server reads ws.BinaryMessage.
