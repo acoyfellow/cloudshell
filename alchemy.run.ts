@@ -121,6 +121,10 @@ export const WORKER = await Worker(workerName, {
 
 export const APP = await SvelteKit(`${projectName}-app`, {
   name: `${projectName}-app`,
+  dev: {
+    command: 'bun vite dev --host 0.0.0.0',
+    domain: 'localhost:5173',
+  },
   compatibility: 'node',
   compatibilityDate: '2026-04-07',
   bindings: {
