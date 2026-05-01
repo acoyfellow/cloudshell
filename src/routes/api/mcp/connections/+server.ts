@@ -49,7 +49,9 @@ async function forward(event: RequestEvent, method: 'GET' | 'DELETE') {
     headers: upstreamHeaders,
   });
 
-  const response = isDev ? await fetch(upstream.url, upstream) : await worker!.fetch(upstream);
+  const response = isDev
+    ? await fetch(upstream.url, { method, headers: upstreamHeaders })
+    : await worker!.fetch(upstream);
 
   if (!response.ok) {
     throw error(
