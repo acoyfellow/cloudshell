@@ -36,7 +36,7 @@ async function forward(event: RequestEvent, method: 'GET' | 'DELETE') {
   const worker = event.platform?.env?.WORKER;
   const isDev = dev;
   const base = isDev
-    ? event.platform?.env?.WORKER_DEV_ORIGIN || process.env.WORKER_DEV_ORIGIN || 'http://localhost:1338'
+    ? event.platform?.env?.WORKER_DEV_ORIGIN || process.env.WORKER_DEV_ORIGIN || 'http://localhost:1337'
     : 'http://worker';
   const workerUrl = new URL('/mcp/connections', base);
   workerUrl.search = event.url.search;
