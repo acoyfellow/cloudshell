@@ -33,30 +33,38 @@ export function isValidWorkspaceId(value: string | null | undefined): value is s
   return typeof value === 'string' && ID_PATTERN.test(value);
 }
 
-export function normalizeRequestedWorkspaceId(value: string | null | undefined): string | null {
+/**
+ * Normalize a user-supplied id string for the `ID_PATTERN` regex.
+ *
+ * - `null` / `undefined` / empty → returns `defaultId`
+ * - matches the pattern → returns the trimmed string
+ * - present but invalid → returns `null`
+ *
+ * The shared validator is `isValidWorkspaceId` because workspace ids and tab
+ * ids use the same regex; only the fallback default differs between callers.
+ */
+function normalizeRequestedId(
+  value: string | null | undefined,
+  defaultId: string
+): string | null {
   if (value == null) {
-    return DEFAULT_SESSION_ID;
+    return defaultId;
   }
 
   const trimmed = value.trim();
   if (trimmed === '') {
-    return DEFAULT_SESSION_ID;
+    return defaultId;
   }
 
   return isValidWorkspaceId(trimmed) ? trimmed : null;
 }
 
+export function normalizeRequestedWorkspaceId(value: string | null | undefined): string | null {
+  return normalizeRequestedId(value, DEFAULT_SESSION_ID);
+}
+
 export function normalizeRequestedTabId(value: string | null | undefined): string | null {
-  if (value == null) {
-    return DEFAULT_TAB_ID;
-  }
-
-  const trimmed = value.trim();
-  if (trimmed === '') {
-    return DEFAULT_TAB_ID;
-  }
-
-  return isValidWorkspaceId(trimmed) ? trimmed : null;
+  return normalizeRequestedId(value, DEFAULT_TAB_ID);
 }
 
 export function getDefaultSessionName(existingCount: number): string {

@@ -82,30 +82,37 @@ export function decodeJsonBody<A, I, R>(
   );
 }
 
-export function decodeWorkspaceId(
+/**
+ * Normalize → schema-decode pipeline shared by `decodeWorkspaceId` and
+ * `decodeTabId`. Each public function passes its own normalizer + schema;
+ * the rest of the flow is identical.
+ */
+function decodeNormalizedId<A, I, R>(
   value: string | null | undefined,
-  message: string
-): Effect.Effect<string, InvalidInput> {
-  const normalized = normalizeRequestedWorkspaceId(value);
+  message: string,
+  normalize: (input: string | null | undefined) => string | null,
+  schema: Schema.Schema<A, I, R>
+): Effect.Effect<string, InvalidInput, R> {
+  const normalized = normalize(value);
   if (!normalized) {
     return Effect.fail(invalidInput(message));
   }
 
-  return decodeUnknownWithSchema(WorkspaceIdSchema, normalized, message).pipe(
+  return decodeUnknownWithSchema(schema, normalized, message).pipe(
     Effect.map((id) => id as string)
   );
+}
+
+export function decodeWorkspaceId(
+  value: string | null | undefined,
+  message: string
+): Effect.Effect<string, InvalidInput> {
+  return decodeNormalizedId(value, message, normalizeRequestedWorkspaceId, WorkspaceIdSchema);
 }
 
 export function decodeTabId(
   value: string | null | undefined,
   message: string
 ): Effect.Effect<string, InvalidInput> {
-  const normalized = normalizeRequestedTabId(value);
-  if (!normalized) {
-    return Effect.fail(invalidInput(message));
-  }
-
-  return decodeUnknownWithSchema(TabIdSchema, normalized, message).pipe(
-    Effect.map((id) => id as string)
-  );
+  return decodeNormalizedId(value, message, normalizeRequestedTabId, TabIdSchema);
 }
